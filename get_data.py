@@ -81,7 +81,7 @@ if __name__ == '__main__':
             thread.start()
             threads.append(thread)
 
-            sleep(0.4)
+            sleep(5)
 
     for thread in threads:
         thread.join()
