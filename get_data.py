@@ -5,7 +5,7 @@ import numpy as np
 import praw
 from praw.models import MoreComments
 
-DOWNLOAD_DATA = True
+DOWNLOAD_DATA = False
 
 CLIENT_ID = 'E9cBapTtE2vUbQ'
 CLIENT_SECRET = 'K4eUnFYNbtD-S32h7EpoaOmGVc8'
@@ -44,12 +44,12 @@ def file_list(file_name):
     return f_list
 
 
-def save_posts(subreddit_name):
-    output = open(subreddit_name + '.txt', 'w', encoding='utf-8')
-    output.write("# this file contains all the data from the subreddits to be tested\n# subreddit_name, title\n\n")
+def save_posts(subreddit_name, limit):
+    output = open('data/' + subreddit_name + '.txt', 'a', encoding='utf-8')
+    output.write("# this file contains all the data from the " + subreddit_name + " to be tested\n# subreddit_name, title\n\n")
 
     post_num = 0
-    for submission in reddit.subreddit(subreddit_name).top(time_filter='all', limit=1000):
+    for submission in reddit.subreddit(subreddit_name).controversial(time_filter='all', limit=limit):
         post_num += 1
         print(post_num)
 
@@ -67,9 +67,9 @@ def save_posts(subreddit_name):
 
 
 def split_data():
-    training_data_file = open('training_data.txt', 'w', encoding='utf-8')
-    development_data_file = open('development_data.txt', 'w', encoding='utf-8')
-    test_data_file = open('test_data.txt', 'w', encoding='utf-8')
+    training_data_file = open('data/training_data.txt', 'w', encoding='utf-8')
+    development_data_file = open('data/development_data.txt', 'w', encoding='utf-8')
+    test_data_file = open('data/test_data.txt', 'w', encoding='utf-8')
 
     training_data, development_data, test_data = list(), list(), list()
 
@@ -102,7 +102,9 @@ if __name__ == '__main__':
         threads = list()
 
         for subreddit_name in subreddit_names:
-            thread = threading.Thread(target=save_posts, args=(subreddit_name,))
+            limit = 1000
+
+            thread = threading.Thread(target=save_posts, args=(subreddit_name, limit,))
             thread.start()
             threads.append(thread)
 
