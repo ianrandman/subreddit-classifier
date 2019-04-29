@@ -1,21 +1,11 @@
 import random
 import threading
-from time import sleep
+import numpy as np
 
 import praw
 from praw.models import MoreComments
 
-import numpy as np
-from joblib import dump, load
-
-from sklearn.model_selection import train_test_split
-from sklearn.datasets import fetch_20newsgroups
-from sklearn import svm
-
-from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.naive_bayes import MultinomialNB
-
-TRAIN = False
+DOWNLOAD_DATA = True
 
 CLIENT_ID = 'E9cBapTtE2vUbQ'
 CLIENT_SECRET = 'K4eUnFYNbtD-S32h7EpoaOmGVc8'
@@ -27,61 +17,97 @@ reddit = praw.Reddit(client_id=CLIENT_ID, client_secret=CLIENT_SECRET,
                      password=PASSWORD, user_agent=USERAGENT,
                      username=USERNAME)
 
-subreddit_names = ['nba', 'nhl', 'nfl']
-sub_to_num = {'r/nba': 0, 'r/nhl': 1, 'r/nfl': 2}
-num_to_sub = {0: 'r/nba', 1: 'r/nhl', 2: 'r/nfl'}
+subreddit_names = ['nba', 'nhl', 'nfl', 'mlb', 'soccer', 'formula1', 'CFB', 'sports']
+sub_to_num = {'r/nba': 0, 'r/nhl': 1, 'r/nfl': 2, 'r/mlb': 3, 'r/soccer': 4, 'r/formula1': 5, 'r/CFB': 6, 'r/sports': 7}
+num_to_sub = {0: 'r/nba', 1: 'r/nhl', 2: 'r/nfl', 3: 'r/mlb', 4: 'r/soccer', 5: 'r/formula1', 6: 'r/CFB', 7: 'r/sports'}
+
+# subreddit_names = ['nba', 'nhl', 'nfl']
+# sub_to_num = {'r/nba': 0, 'r/nhl': 1, 'r/nfl': 2}
+# num_to_sub = {0: 'r/nba', 1: 'r/nhl', 2: 'r/nfl'}
 
 
-def save_posts(submissions, subreddit_name, thread_num, num_posts_to_get, num_total_posts):
-    # output = open('train', "w", encoding='utf-8')
-    # output.write("# this file contains all the data from the subreddits to be tested\n# subreddit_name, title\n\n")
+def file_list(file_name):
+    """
+    This function opens a file and returns it as a list.
+    All new line characters are stripped.
+    All lines that start with '#' are considered comments and are not included.
 
-    output = ''
+    :param file_name: the name of the file to be put into a list
+    :return: a list containing each line of the file, except those that start with '#'
+    """
 
-    starting_post_num = thread_num * num_posts_to_get
+    f_list = []
+    with open(file_name, encoding='utf-8') as f:
+        for line in f:
+            if line[0] != '#' and line[0] != '\n' and len(line[0]) > 0:
+                f_list.append(line.strip('\n'))
+    return f_list
 
-    post_number = 0
-    for submission in submissions:#reddit.subreddit(subreddit_name).top(time_filter='all', limit=num_total_posts):
-        if starting_post_num <= post_number < starting_post_num + num_posts_to_get:
-            print("Post number: " + str(post_number))
-            data = submission.selftext + ' comment_separator '
-            for comment in submission.comments.list():
-                if isinstance(comment, MoreComments):
-                    continue
 
-                data += comment.body + ' comment_separator '
+def save_posts(subreddit_name):
+    output = open(subreddit_name + '.txt', 'w', encoding='utf-8')
+    output.write("# this file contains all the data from the subreddits to be tested\n# subreddit_name, title\n\n")
 
-            data = data.replace('\n', ' ')
-            data = data.replace('\r', ' ')
+    post_num = 0
+    for submission in reddit.subreddit(subreddit_name).top(time_filter='all', limit=1000):
+        post_num += 1
+        print(post_num)
 
-            output += submission.subreddit_name_prefixed + ',' + data + '\n'
+        data = submission.selftext + ' comment_separator '
+        for comment in submission.comments.list():
+            if isinstance(comment, MoreComments):
+                continue
 
-        post_number += 1
+            data += comment.body + ' comment_separator '
 
-    output_file = open(subreddit_name + '.txt', "a", encoding='utf-8')
-    output_file.write(output)
+        data = data.replace('\n', ' ')
+        data = data.replace('\r', ' ')
 
-        # output.write(submission.subreddit_name_prefixed + ',' + data + '\n')
+        output.write(submission.subreddit_name_prefixed + ',' + data + '\n')
+
+
+def split_data():
+    training_data_file = open('training_data.txt', 'w', encoding='utf-8')
+    development_data_file = open('development_data.txt', 'w', encoding='utf-8')
+    test_data_file = open('test_data.txt', 'w', encoding='utf-8')
+
+    training_data, development_data, test_data = list(), list(), list()
+
+    for subreddit_name in subreddit_names:
+        data = file_list(subreddit_name + '.txt')
+        random.shuffle(data)
+
+        train, dev, test = np.split(data, [int(0.5 * len(data)), int(0.75 * len(data))])
+
+        training_data.extend(train)
+        development_data.extend(dev)
+        test_data.extend(test)
+
+    random.shuffle(training_data)
+    random.shuffle(development_data)
+    random.shuffle(test_data)
+
+    for post in training_data:
+        training_data_file.write(post + '\n')
+
+    for post in development_data:
+        development_data_file.write(post + '\n')
+
+    for post in test_data:
+        test_data_file.write(post + '\n')
 
 
 if __name__ == '__main__':
-    num_posts_to_get = 5
-    num_total_posts = 100
+    if DOWNLOAD_DATA:
+        threads = list()
 
-    threads = list()
-
-    for subreddit_name in subreddit_names:
-        open(subreddit_name + '.txt', 'w', encoding='utf-8').close()
-
-        submissions = reddit.subreddit(subreddit_name).top(time_filter='all', limit=num_total_posts)
-
-        for thread_num in range(int(num_total_posts / num_posts_to_get)):
-            print("Thread num: " + str(thread_num))
-            thread = threading.Thread(target=save_posts, args=(submissions, subreddit_name, thread_num, num_posts_to_get, num_total_posts))
+        for subreddit_name in subreddit_names:
+            thread = threading.Thread(target=save_posts, args=(subreddit_name,))
             thread.start()
             threads.append(thread)
 
-            sleep(5)
+        for thread in threads:
+            thread.join()
 
-    for thread in threads:
-        thread.join()
+    else:
+        split_data()
