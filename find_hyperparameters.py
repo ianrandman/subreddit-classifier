@@ -45,7 +45,8 @@ subreddit_names = ['nba', 'nhl', 'nfl', 'mlb', 'soccer', 'formula1', 'CFB', 'spo
 sub_to_num = {'r/nba': 0, 'r/nhl': 1, 'r/nfl': 2, 'r/mlb': 3, 'r/soccer': 4, 'r/formula1': 5, 'r/CFB': 6, 'r/sports': 7}
 num_to_sub = {0: 'r/nba', 1: 'r/nhl', 2: 'r/nfl', 3: 'r/mlb', 4: 'r/soccer', 5: 'r/formula1', 6: 'r/CFB', 7: 'r/sports'}
 
-classifiers = {'MultinomialNB': MultinomialNB(), 'SVC': SVC(), 'RandomForestClassifier': RandomForestClassifier(), 'SGDClassifier': SGDClassifier()}
+classifiers = {'MultinomialNB': MultinomialNB(), 'SVC': SVC(), 'RandomForestClassifier': RandomForestClassifier(),
+               'SGDClassifier': SGDClassifier()}
 
 parameters = {'MultinomialNB':
                   {'clf__alpha': np.logspace(-5, 0, num=6),
@@ -56,41 +57,9 @@ parameters = {'MultinomialNB':
                    'vect__max_df': [0.50, 0.75, 1.0],
                    'vect__ngram_range': [(1, 1), (1, 2)]
                    },
-               'SVC':
-                  {'clf__C': np.logspace(-2, 2, num=5),
-                   'clf__gamma': np.logspace(-2, 2, num=5),
-                   'clf__kernel': ['rbf', 'linear'],
-                   'tfidf__norm': ['l1', 'l2', None],
-                   'tfidf__use_idf': [True, False],
-                   'tfidf__sublinear_tf': [True, False],
-                   'vect__max_df': [0.50, 0.75, 1.0],
-                   'vect__ngram_range': [(1, 1), (1, 2)]
-                   },
-               'RandomForestClassifier':
-                  {'clf__alpha': np.logspace(-5, 0, num=6),
-                   'clf__fit_prior': [True, False],
-                   'tfidf__norm': ['l1', 'l2', None],
-                   'tfidf__use_idf': [True, False],
-                   'tfidf__sublinear_tf': [True, False],
-                   'vect__max_df': [0.50, 0.75, 1.0],
-                   'vect__ngram_range': [(1, 1), (1, 2)]
-                   },
-               'SGDClassifier':
-                  {'clf__alpha': np.logspace(-5, 0, num=6),
-                   'clf__fit_prior': [True, False],
-                   'tfidf__norm': ['l1', 'l2', None],
-                   'tfidf__use_idf': [True, False],
-                   'tfidf__sublinear_tf': [True, False],
-                   'vect__max_df': [0.50, 0.75, 1.0],
-                   'vect__ngram_range': [(1, 1), (1, 2)]
-                   },
-              }
-
-
-# subreddit_names = ['nba', 'nhl', 'nfl']
-# sub_to_num = {'r/nba': 0, 'r/nhl': 1, 'r/nfl': 2}
-# num_to_sub = {0: 'r/nba', 1: 'r/nhl', 2: 'r/nfl'}
-
+              'SVC': SVC(),
+              'RandomForestClassifier': RandomForestClassifier(),
+              'SGDClassifier': SGDClassifier()}
 
 def file_list(file_name):
     """
@@ -126,8 +95,7 @@ def parse_reddit_data(file_name):
         data.append(comments)
         sub_classifications.append(sub_to_num[post_split[0]])
 
-    return data, sub_classifications
-
+    return data[:100], sub_classifications[:100]
 
 
 class StemmedCountVectorizer(CountVectorizer):
@@ -164,100 +132,84 @@ def get_params_to_test(grid_params):
 
     return (params_to_test)
 
+
 def split(a, n):
     k, m = divmod(len(a), n)
     return (a[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(n))
 
+train_data, train_sub_classifications = parse_reddit_data('data/training_data.txt')
+validation_data, validation_sub_classifications = parse_reddit_data('data/development_data.txt')
+
 def fit(num_thread, params_to_test):
-    best_pipeline = None
+    best_classifier = None
     best_score = 0
 
     for parameters in params_to_test:
         clf_pipeline = Pipeline([
             ('vect', CountVectorizer(stop_words='english')),
             ('tfidf', TfidfTransformer()),
-            ('clf', SVC()),
+            ('clf', MultinomialNB()),
         ])
 
         clf_pipeline.set_params(**parameters)
 
+        #print("Thread number: %s -- here" % (num_thread))
+
         clf_pipeline.fit(train_data, train_sub_classifications)
+
+        #print("Thread number: %s -- hi" % (num_thread))
+
         score = clf_pipeline.score(validation_data, validation_sub_classifications)
 
         if score > best_score:
             best_score = score
-            best_pipeline = clf_pipeline
+            best_classifier = clf_pipeline
 
-    best_classifier[num_thread] = best_pipeline
+        print("Thread number: %s -- model trained and tested" % (num_thread))
+
+    best_classifiers[num_thread] = best_classifier
     best_scores[num_thread] = best_score
 
 
-
 def train():
-    train_data, train_sub_classifications = parse_reddit_data('data/training_data.txt')
-    validation_data, validation_sub_classifications = parse_reddit_data('data/development_data.txt')
-
     print('hi')
 
-    clf_pipeline = Pipeline([
-        ('vect', CountVectorizer(stop_words='english')),
-        ('tfidf', TfidfTransformer()),
-        ('clf', MultinomialNB()),
-    ])
+    for i in range(num_threads):
+        threads[i] = threading.Thread(target=fit, args=(i, thread_params[i],))
+        threads[i].start()
 
-    parameters = {'clf__alpha': 0.001,
-                   'clf__fit_prior': False,
-                   'tfidf__norm': 'l1',
-                   'tfidf__use_idf': False,
-                   'tfidf__sublinear_tf': False,
-                   'vect__max_df': 0.50,
-                   'vect__ngram_range': (1, 1)
-                   }
+    for i in range(num_threads):
+        threads[i].join()
 
-    clf_pipeline.set_params(**parameters)
+    best_score = max(best_scores)
+    best_classifier = best_classifiers[best_scores.index(best_score)]
 
-    #
-    #
-    # print(clf_pipeline.get_params().keys())
-    # print()
-    # print(clf_pipeline.get_params())
+    print("Best Score: %s%%" % (round(100 * best_score, 2)))
+    print(best_classifier.get_params())
 
-    # clf.fit(train_data + validation_data, train_sub_classifications + validation_sub_classifications)
-    # print("Best Score: %s%%" % (round(100*clf.best_estimator_.score(train_data, train_sub_classifications), 2)))
-    # print("Best Score: %s%%" % (round(100 * clf.best_estimator_.score(validation_data, validation_sub_classifications), 2)))
-    #
-    # dump(clf.best_estimator_, 'models/classifier.joblib')
+    dump(best_classifiers, 'models/classifier.joblib')
 
-    clf_pipeline.fit(train_data, train_sub_classifications)
-    print("Best Score: %s%%" % (round(100 * clf_pipeline.score(validation_data, validation_sub_classifications), 2)))
-
-    dump(clf_pipeline, 'models/old_classifier.joblib')
-
-
-def predict_sub():
-    clf = load('models/classifier.joblib')
-
-    test_data, test_sub_classifications = parse_reddit_data('data/training_data.txt')
-
-    predicted = clf.predict(test_data)
-
-    for actual_sub, data, predicted_sub in zip(test_sub_classifications, test_data, predicted):
-        if actual_sub != predicted_sub:
-            print('%s: %s <= %r' % (num_to_sub[actual_sub], num_to_sub[predicted_sub], data))
-
-    num_correct = 0
-    num_total = 0
-    for subreddit_name, category in zip(test_sub_classifications, predicted):
-        if subreddit_name == category:
-            num_correct += 1
-
-        num_total += 1
-
-    print('%s/%s (%s%%) correct' % (num_correct, num_total, round(100*(np.mean(test_sub_classifications == predicted)), 2)))
 
 
 if __name__ == '__main__':
-    if TRAIN:
-        train()
-    else:
-        predict_sub()
+    grid_params = {'clf__alpha': np.logspace(-5, 0, num=6),
+                   'clf__fit_prior': [True, False],
+                   'tfidf__norm': ['l1', 'l2', None],
+                   'tfidf__use_idf': [True, False],
+                   'tfidf__sublinear_tf': [True, False],
+                   'vect__max_df': [0.50, 0.75, 1.0],
+                   'vect__ngram_range': [(1, 1), (1, 2)]
+                   }
+
+    params_to_test = get_params_to_test(grid_params)
+    num_params_in_thread = 10
+
+    thread_params = list(split(params_to_test, int(len(params_to_test) / num_params_in_thread)))
+
+    num_threads = len(thread_params)
+
+    threads = [None] * num_threads
+    best_classifiers = [None] * num_threads
+    best_scores = [None] * num_threads
+
+    train()
