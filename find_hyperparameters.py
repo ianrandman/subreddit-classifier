@@ -1,5 +1,8 @@
 import random
+import sys
+import os
 import threading
+import multiprocessing
 import re
 import itertools
 import time
@@ -8,7 +11,8 @@ import praw
 from praw.models import MoreComments
 
 import numpy as np
-from joblib import dump, load
+import joblib
+import pickle
 
 from nltk.stem.snowball import SnowballStemmer
 
@@ -27,20 +31,6 @@ from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import SGDClassifier
 
-TRAIN = True
-
-CLIENT_ID = 'E9cBapTtE2vUbQ'
-CLIENT_SECRET = 'K4eUnFYNbtD-S32h7EpoaOmGVc8'
-PASSWORD = 'awhMgfH4FBnYD24'
-USERAGENT = 'a subreddit classifier'
-USERNAME = 'cheermeup12'
-
-reddit = praw.Reddit(client_id=CLIENT_ID, client_secret=CLIENT_SECRET,
-                     password=PASSWORD, user_agent=USERAGENT,
-                     username=USERNAME)
-
-print(reddit.user.me())
-
 subreddit_names = ['nba', 'nhl', 'nfl', 'mlb', 'soccer', 'formula1', 'CFB', 'sports']
 sub_to_num = {'r/nba': 0, 'r/nhl': 1, 'r/nfl': 2, 'r/mlb': 3, 'r/soccer': 4, 'r/formula1': 5, 'r/CFB': 6, 'r/sports': 7}
 num_to_sub = {0: 'r/nba', 1: 'r/nhl', 2: 'r/nfl', 3: 'r/mlb', 4: 'r/soccer', 5: 'r/formula1', 6: 'r/CFB', 7: 'r/sports'}
@@ -48,7 +38,10 @@ num_to_sub = {0: 'r/nba', 1: 'r/nhl', 2: 'r/nfl', 3: 'r/mlb', 4: 'r/soccer', 5: 
 classifiers = {'MultinomialNB': MultinomialNB(), 'SVC': SVC(), 'RandomForestClassifier': RandomForestClassifier(),
                'SGDClassifier': SGDClassifier()}
 
-parameters = {'MultinomialNB':
+random_forest_max_depth = [int(x) for x in np.linspace(10, 110, num=11)]
+random_forest_max_depth.append(None)
+
+grid_params = {'MultinomialNB':
                   {'clf__alpha': np.logspace(-5, 0, num=6),
                    'clf__fit_prior': [True, False],
                    'tfidf__norm': ['l1', 'l2', None],
@@ -57,9 +50,40 @@ parameters = {'MultinomialNB':
                    'vect__max_df': [0.50, 0.75, 1.0],
                    'vect__ngram_range': [(1, 1), (1, 2)]
                    },
-              'SVC': SVC(),
-              'RandomForestClassifier': RandomForestClassifier(),
-              'SGDClassifier': SGDClassifier()}
+              'SVC':
+                  {'clf__C': np.logspace(-2, 2, num=5),
+                   'clf__gamma': np.logspace(-2, 2, num=5),
+                   'clf__kernel': ['rbf', 'linear'],
+                   'tfidf__norm': ['l1', 'l2', None],
+                   'tfidf__use_idf': [True, False],
+                   'tfidf__sublinear_tf': [True, False],
+                   'vect__max_df': [0.50, 0.75, 1.0],
+                   'vect__ngram_range': [(1, 1), (1, 2)]
+                   },
+              'RandomForestClassifier':
+                  {'clf__n_estimators': [int(x) for x in np.linspace(start=10, stop=2000, num=10)],
+                   'clf__max_depth': random_forest_max_depth,
+                   'clf__min_samples_split': [2, 5, 10],
+                   'clf__min_samples_leaf': [1, 2, 4],
+                   'clf__n_jobs': [-1],
+                   'tfidf__norm': ['l1', 'l2', None],
+                   'tfidf__use_idf': [True, False],
+                   'tfidf__sublinear_tf': [True, False],
+                   'vect__max_df': [0.50, 0.75, 1.0],
+                   'vect__ngram_range': [(1, 1), (1, 2)]
+                   },
+              'SGDClassifier':
+                  {'clf__loss': ['hinge', 'log'],
+                   'clf__penalty': ['l1', 'l2', None],
+                   'clf__alpha': np.logspace(-4, 2, num=7),
+                   'clf__n_jobs': [-1],
+                   'tfidf__norm': ['l1', 'l2', None],
+                   'tfidf__use_idf': [True, False],
+                   'tfidf__sublinear_tf': [True, False],
+                   'vect__max_df': [0.50, 0.75, 1.0],
+                   'vect__ngram_range': [(1, 1), (1, 2)]
+                   },
+              }
 
 def file_list(file_name):
     """
@@ -95,18 +119,16 @@ def parse_reddit_data(file_name):
         data.append(comments)
         sub_classifications.append(sub_to_num[post_split[0]])
 
-    return data[:100], sub_classifications[:100]
+    return data, sub_classifications
 
 
-class StemmedCountVectorizer(CountVectorizer):
+full_train_data, full_train_sub_classifications = parse_reddit_data('data/training_data.txt')
+full_validation_data, full_validation_sub_classifications = parse_reddit_data('data/development_data.txt')
 
-    def __init__(self, stop_words=None):
-        super(StemmedCountVectorizer, self).__init__(stop_words)
-        self.stemmer = SnowballStemmer("english", ignore_stopwords=True)
+num_posts_train_hyperparameters = 500
 
-    def build_analyzer(self):
-        analyzer = super(StemmedCountVectorizer, self).build_analyzer()
-        return lambda doc: ([self.stemmer.stem(w) for w in analyzer(doc)])
+partial_train_data, partial_train_sub_classifications = full_train_data[:num_posts_train_hyperparameters], full_train_sub_classifications[:num_posts_train_hyperparameters]
+partial_validation_data, partial_validation_sub_classifications = full_validation_data[:num_posts_train_hyperparameters], full_validation_sub_classifications[:num_posts_train_hyperparameters]
 
 
 def get_params_to_test(grid_params):
@@ -137,79 +159,114 @@ def split(a, n):
     k, m = divmod(len(a), n)
     return (a[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(n))
 
-train_data, train_sub_classifications = parse_reddit_data('data/training_data.txt')
-validation_data, validation_sub_classifications = parse_reddit_data('data/development_data.txt')
 
-def fit(num_thread, params_to_test):
-    best_classifier = None
+def get_new_pipeline(classifier_name):
+    if classifier_name == 'MultinomialNB':
+        clf = MultinomialNB()
+    elif classifier_name == 'SVC':
+        clf = SVC()
+    elif classifier_name == 'RandomForestClassifier':
+        clf = RandomForestClassifier()
+    else:
+        clf = SGDClassifier()
+
+    clf_pipeline = Pipeline([
+        ('vect', CountVectorizer(stop_words='english')),
+        ('tfidf', TfidfTransformer()),
+        ('clf', clf),
+    ])
+
+    return clf_pipeline
+
+
+def fit_get_hyperparameters(num_thread, params_to_test, classifier_name):
+    best_params = None
     best_score = 0
 
+    run_num = 0
+
     for parameters in params_to_test:
-        clf_pipeline = Pipeline([
-            ('vect', CountVectorizer(stop_words='english')),
-            ('tfidf', TfidfTransformer()),
-            ('clf', MultinomialNB()),
-        ])
+        run_num += 1
+
+        clf_pipeline = get_new_pipeline(classifier_name)
 
         clf_pipeline.set_params(**parameters)
+        clf_pipeline.fit(partial_train_data, partial_train_sub_classifications)
 
-        #print("Thread number: %s -- here" % (num_thread))
-
-        clf_pipeline.fit(train_data, train_sub_classifications)
-
-        #print("Thread number: %s -- hi" % (num_thread))
-
-        score = clf_pipeline.score(validation_data, validation_sub_classifications)
+        score = clf_pipeline.score(partial_validation_data, partial_validation_sub_classifications)
 
         if score > best_score:
             best_score = score
-            best_classifier = clf_pipeline
+            best_params = parameters
 
-        print("Thread number: %s -- model trained and tested" % (num_thread))
+        print("Thread number: %s -- model trained and tested -- run number %s" % (num_thread, run_num))
 
-    best_classifiers[num_thread] = best_classifier
-    best_scores[num_thread] = best_score
+    with open('temp/' + classifier_name + '.temp', "ab") as temp_file:
+        pickle.dump((best_score, best_params), temp_file)
+
+    # threads.best_params_sets[num_thread] = best_params
+    # threads.best_scores[num_thread] = best_score
 
 
-def train():
-    print('hi')
+def train(num_threads, classifier_name):
+    threads = [None] * num_threads
 
     for i in range(num_threads):
-        threads[i] = threading.Thread(target=fit, args=(i, thread_params[i],))
+        threads[i] = multiprocessing.Process(target=fit_get_hyperparameters, args=(i, thread_params[i], classifier_name,))
         threads[i].start()
 
     for i in range(num_threads):
         threads[i].join()
 
-    best_score = max(best_scores)
-    best_classifier = best_classifiers[best_scores.index(best_score)]
+    # best_score = max(threads.best_scores)
+    # best_params = threads.best_params_sets[threads.best_scores.index(best_score)]
 
-    print("Best Score: %s%%" % (round(100 * best_score, 2)))
-    print(best_classifier.get_params())
+    best_score = 0
+    best_params = None
+    with open('temp/' + classifier_name + '.temp', "rb") as temp_file:
+        try:
+            while True:
+                score, parameters = pickle.load(temp_file)
 
-    dump(best_classifiers, 'models/classifier.joblib')
+                if score > best_score:
+                    best_score = score
+                    best_params = parameters
+        except EOFError: # reached end of file
+            pass
+
+    os.remove('temp/' + classifier_name + '.temp')
+
+
+    clf_pipeline = get_new_pipeline(classifier_name)
+    clf_pipeline.set_params(**best_params)
+
+    clf_pipeline.fit(full_train_data, full_train_sub_classifications)
+
+    print("Score: %s%%" % (round(100 * clf_pipeline.score(full_validation_data, full_validation_sub_classifications), 2)))
+    print(best_params)
+
+    joblib.dump(clf_pipeline, 'models/' + classifier_name + '.joblib')
 
 
 
 if __name__ == '__main__':
-    grid_params = {'clf__alpha': np.logspace(-5, 0, num=6),
-                   'clf__fit_prior': [True, False],
-                   'tfidf__norm': ['l1', 'l2', None],
-                   'tfidf__use_idf': [True, False],
-                   'tfidf__sublinear_tf': [True, False],
-                   'vect__max_df': [0.50, 0.75, 1.0],
-                   'vect__ngram_range': [(1, 1), (1, 2)]
-                   }
+    classifier_name = sys.argv[1]
+    print(classifier_name)
 
-    params_to_test = get_params_to_test(grid_params)
-    num_params_in_thread = 10
+    open('temp/' + classifier_name + '.temp', "w").close() # clear the temp file
+
+    params_to_test = get_params_to_test(grid_params[classifier_name])
+    random.shuffle(params_to_test)
+
+    params_to_test = params_to_test[:500] # test on a random selection of 500 parameter combinations
+
+    num_params_in_thread = 50 # 50 parameter selection in each thread for a total of 10 threads
 
     thread_params = list(split(params_to_test, int(len(params_to_test) / num_params_in_thread)))
 
     num_threads = len(thread_params)
 
-    threads = [None] * num_threads
-    best_classifiers = [None] * num_threads
-    best_scores = [None] * num_threads
+    start_training_time = time.time()
+    train(num_threads, classifier_name)
 
-    train()
+    print('Time to find best hyperparameters and train on full training set: %s seconds' % (time.time() - start_training_time))

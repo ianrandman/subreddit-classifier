@@ -27,7 +27,7 @@ from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import SGDClassifier
 
-TRAIN = True
+TRAIN = False
 
 CLIENT_ID = 'E9cBapTtE2vUbQ'
 CLIENT_SECRET = 'K4eUnFYNbtD-S32h7EpoaOmGVc8'
@@ -44,52 +44,6 @@ print(reddit.user.me())
 subreddit_names = ['nba', 'nhl', 'nfl', 'mlb', 'soccer', 'formula1', 'CFB', 'sports']
 sub_to_num = {'r/nba': 0, 'r/nhl': 1, 'r/nfl': 2, 'r/mlb': 3, 'r/soccer': 4, 'r/formula1': 5, 'r/CFB': 6, 'r/sports': 7}
 num_to_sub = {0: 'r/nba', 1: 'r/nhl', 2: 'r/nfl', 3: 'r/mlb', 4: 'r/soccer', 5: 'r/formula1', 6: 'r/CFB', 7: 'r/sports'}
-
-classifiers = {'MultinomialNB': MultinomialNB(), 'SVC': SVC(), 'RandomForestClassifier': RandomForestClassifier(), 'SGDClassifier': SGDClassifier()}
-
-parameters = {'MultinomialNB':
-                  {'clf__alpha': np.logspace(-5, 0, num=6),
-                   'clf__fit_prior': [True, False],
-                   'tfidf__norm': ['l1', 'l2', None],
-                   'tfidf__use_idf': [True, False],
-                   'tfidf__sublinear_tf': [True, False],
-                   'vect__max_df': [0.50, 0.75, 1.0],
-                   'vect__ngram_range': [(1, 1), (1, 2)]
-                   },
-               'SVC':
-                  {'clf__C': np.logspace(-2, 2, num=5),
-                   'clf__gamma': np.logspace(-2, 2, num=5),
-                   'clf__kernel': ['rbf', 'linear'],
-                   'tfidf__norm': ['l1', 'l2', None],
-                   'tfidf__use_idf': [True, False],
-                   'tfidf__sublinear_tf': [True, False],
-                   'vect__max_df': [0.50, 0.75, 1.0],
-                   'vect__ngram_range': [(1, 1), (1, 2)]
-                   },
-               'RandomForestClassifier':
-                  {'clf__alpha': np.logspace(-5, 0, num=6),
-                   'clf__fit_prior': [True, False],
-                   'tfidf__norm': ['l1', 'l2', None],
-                   'tfidf__use_idf': [True, False],
-                   'tfidf__sublinear_tf': [True, False],
-                   'vect__max_df': [0.50, 0.75, 1.0],
-                   'vect__ngram_range': [(1, 1), (1, 2)]
-                   },
-               'SGDClassifier':
-                  {'clf__alpha': np.logspace(-5, 0, num=6),
-                   'clf__fit_prior': [True, False],
-                   'tfidf__norm': ['l1', 'l2', None],
-                   'tfidf__use_idf': [True, False],
-                   'tfidf__sublinear_tf': [True, False],
-                   'vect__max_df': [0.50, 0.75, 1.0],
-                   'vect__ngram_range': [(1, 1), (1, 2)]
-                   },
-              }
-
-
-# subreddit_names = ['nba', 'nhl', 'nfl']
-# sub_to_num = {'r/nba': 0, 'r/nhl': 1, 'r/nfl': 2}
-# num_to_sub = {0: 'r/nba', 1: 'r/nhl', 2: 'r/nfl'}
 
 
 def file_list(file_name):
@@ -129,7 +83,6 @@ def parse_reddit_data(file_name):
     return data, sub_classifications
 
 
-
 class StemmedCountVectorizer(CountVectorizer):
 
     def __init__(self, stop_words=None):
@@ -164,9 +117,11 @@ def get_params_to_test(grid_params):
 
     return (params_to_test)
 
+
 def split(a, n):
     k, m = divmod(len(a), n)
     return (a[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(n))
+
 
 def fit(num_thread, params_to_test):
     best_pipeline = None
@@ -192,7 +147,6 @@ def fit(num_thread, params_to_test):
     best_scores[num_thread] = best_score
 
 
-
 def train():
     train_data, train_sub_classifications = parse_reddit_data('data/training_data.txt')
     validation_data, validation_sub_classifications = parse_reddit_data('data/development_data.txt')
@@ -206,13 +160,13 @@ def train():
     ])
 
     parameters = {'clf__alpha': 0.001,
-                   'clf__fit_prior': False,
-                   'tfidf__norm': 'l1',
-                   'tfidf__use_idf': False,
-                   'tfidf__sublinear_tf': False,
-                   'vect__max_df': 0.50,
-                   'vect__ngram_range': (1, 1)
-                   }
+                  'clf__fit_prior': False,
+                  'tfidf__norm': 'l1',
+                  'tfidf__use_idf': False,
+                  'tfidf__sublinear_tf': False,
+                  'vect__max_df': 0.50,
+                  'vect__ngram_range': (1, 1)
+                  }
 
     clf_pipeline.set_params(**parameters)
 
@@ -235,9 +189,9 @@ def train():
 
 
 def predict_sub():
-    clf = load('models/classifier.joblib')
+    clf = load('models/MultinomialNB.joblib')
 
-    test_data, test_sub_classifications = parse_reddit_data('data/training_data.txt')
+    test_data, test_sub_classifications = parse_reddit_data('data/development_data.txt')
 
     predicted = clf.predict(test_data)
 
@@ -253,7 +207,8 @@ def predict_sub():
 
         num_total += 1
 
-    print('%s/%s (%s%%) correct' % (num_correct, num_total, round(100*(np.mean(test_sub_classifications == predicted)), 2)))
+    print('%s/%s (%s%%) correct' % (
+        num_correct, num_total, round(100 * (np.mean(test_sub_classifications == predicted)), 2)))
 
 
 if __name__ == '__main__':
