@@ -2,12 +2,15 @@
 
 usage: predict_subreddit.py [-h]
                             [-clf {MultinomialNB,SVC,RandomForestClassifier,SGDClassifier}]
+                            [--url URL]
 
 optional arguments:
   -h, --help            show this help message and exit
   -clf {MultinomialNB,SVC,RandomForestClassifier,SGDClassifier}, --classifier_name {MultinomialNB,SVC,RandomForestClassifier,SGDClassifier}
                         The name of the classifier. A random classifier will
                         be used if none specified.
+  --url URL             The url of a post to test. If none, a random post will
+                        be used.
 
 For example: python predict_subreddit.py -clf MultinomialNB
 
@@ -62,11 +65,47 @@ def predict_random_post(classifier_name):
     print('Predicted Subreddit', prediction)
 
 
+def predict_post(classifier_name, url):
+    """
+    Get a post a specified Reddit URL and classify it using a specified classifier.
+
+    :param classifier_name: classifier_name: the name of the estimator
+    :param url: the url of the post to predict
+    :return: none
+    """
+
+    submission = reddit.submission(url=url)
+    data = submission.selftext + ' '
+    for comment in submission.comments.list():
+        if isinstance(comment, MoreComments):
+            continue
+
+        data += comment.body + ' '
+
+    data = data.replace('\n', ' ')
+    data = data.replace('\r', ' ')
+
+    print(submission.shortlink)
+    print('Title: ', submission.title)
+    print('Actual subreddit: ', submission.subreddit_name_prefixed)
+
+    print('\nPredicting subreddit...\n')
+
+    clf_pipeline = load('models/' + classifier_name + '.joblib')
+    prediction = num_to_sub[clf_pipeline.predict([data])[0]]
+
+    print('Predicted Subreddit', prediction)
+
+
 if __name__ == '__main__':
     classifiers = ['MultinomialNB', 'SVC', 'RandomForestClassifier', 'SGDClassifier']
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('-clf', '--classifier_name', help='The name of the classifier. A random classifier will be used if none specified.', choices=classifiers)
+    parser.add_argument('-clf', '--classifier_name', help='The name of the classifier. A random classifier will be '
+                                                          'used if none specified.', choices=classifiers)
+
+    parser.add_argument('--url', help='The url of a post to test. If none, a random post will be used.')
+
     args = parser.parse_args()
 
     classifier_name = args.classifier_name
@@ -75,4 +114,8 @@ if __name__ == '__main__':
 
     print('Using %s classifier\n' % classifier_name)
 
-    predict_random_post(classifier_name)
+    url = args.url
+    if url is None:
+        predict_random_post(classifier_name)
+    else:
+        predict_post(classifier_name, url)
