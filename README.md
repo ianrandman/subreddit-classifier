@@ -25,6 +25,8 @@ In order to simply test a classifier on a random reddit post, run:
 > python predict_subreddit.py
 ```
 
+The --url flag can be used to specify a url of a post to predict.
+
 Run the following to get more usage options:
 ```sh
 > python predict_subreddit.py -h
