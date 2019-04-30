@@ -3,15 +3,23 @@ Perform a random search over a set of possible hyperparameters for a specified c
 hyperparameters to test will be trained using a subset of the training data and validated on a subset of the
 development data.
 
-Usage: python find_hyperparameters.py [classifier_name]
-classifier_name is the name of the estimator to use.
-Possibilities are MultinomialNB, SVC, RandomForestClassifier, and SGDClassifier.
+usage: find_hyperparameters.py [-h]
+                               {MultinomialNB,SVC,RandomForestClassifier,SGDClassifier}
+
+positional arguments:
+  {MultinomialNB,SVC,RandomForestClassifier,SGDClassifier}
+                        The name of the classifier.
+
+optional arguments:
+  -h, --help            show this help message and exit
+
 For example: python find_hyperparameters.py MultinomialNB
 
 __author__ = Ian Randman
 __author__ = David Dunlap
 """
 
+import argparse
 import random
 import sys
 import os
@@ -33,9 +41,7 @@ from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import SGDClassifier
 
-from get_data import subreddit_names
 from get_data import sub_to_num
-from get_data import num_to_sub
 
 from get_data import file_list
 from parameters import params_to_search # these are the parameters to search over
@@ -58,7 +64,6 @@ def parse_reddit_data(file_name):
         post_split = post.split(',', 1)
 
         comments = post_split[1]
-        comments = comments.replace(' comment_separator ', ' ')
 
         comments = re.sub("[^0-9a-zA-Z']+", ' ', comments)
 
@@ -223,8 +228,16 @@ def train(num_threads, thread_params, classifier_name):
 
 
 if __name__ == '__main__':
-    classifier_name = sys.argv[1]
-    print(classifier_name)
+    classifiers = ['MultinomialNB', 'SVC', 'RandomForestClassifier', 'SGDClassifier']
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('classifier_name',
+                        help='The name of the classifier.',
+                        choices=classifiers)
+    args = parser.parse_args()
+
+    classifier_name = args.classifier_name
+    print('Using %s classifier\n' % classifier_name)
 
     open('temp/' + classifier_name + '.temp', "w").close() # clear the temp file
 

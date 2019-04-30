@@ -1,6 +1,8 @@
 """
 This should be used to retrieve Reddit posts using Reddit's Praw. Then split the data.
 
+usage: get_data.py
+
 __author__ = Ian Randman
 __author__ = David Dunlap
 """
@@ -47,8 +49,9 @@ def file_list(file_name):
 
 def save_posts(subreddit_name, limit):
     """
-    From a specified subreddit, retrieve a specified number of posts. Save them to a file in the data folder as [
-    subreddit_name].txt, where each line is in the format (subreddit_name, [concatenation of comments from post]).
+    From a specified subreddit, retrieve a specified number of posts from top of all tim. Save them to a file in the
+    data folder as [subreddit_name].txt, where each line is in the format
+    (subreddit_name, [concatenation of comments from post]).
 
     :param subreddit_name: the subreddit to get posts from
     :param limit: the number of posts to get
@@ -59,16 +62,16 @@ def save_posts(subreddit_name, limit):
     output.write("# this file contains all the data from the " + subreddit_name + " to be tested\n# subreddit_name, title\n\n")
 
     post_num = 0
-    for submission in reddit.subreddit(subreddit_name).controversial(time_filter='all', limit=limit):
+    for submission in reddit.subreddit(subreddit_name).top(time_filter='all', limit=limit):
         post_num += 1
         print(post_num)
 
-        data = submission.selftext + ' comment_separator '
+        data = submission.selftext + ' '
         for comment in submission.comments.list():
             if isinstance(comment, MoreComments):
                 continue
 
-            data += comment.body + ' comment_separator '
+            data += comment.body + ' '
 
         data = data.replace('\n', ' ')
         data = data.replace('\r', ' ')
@@ -89,7 +92,7 @@ def split_data():
 
     training_data_file = open('data/training_data.txt', 'w', encoding='utf-8')
     development_data_file = open('data/development_data.txt', 'w', encoding='utf-8')
-    test_data_file = open('data/test_data.txt', 'w', encoding='utf-8')
+    test_data_file = open('data/testing_data.txt', 'w', encoding='utf-8')
 
     training_data, development_data, test_data = list(), list(), list()
 
