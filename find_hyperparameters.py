@@ -46,6 +46,8 @@ from get_data import sub_to_num
 from get_data import file_list
 from parameters import params_to_search # these are the parameters to search over
 
+from io import open
+
 
 def parse_reddit_data(file_name):
     """

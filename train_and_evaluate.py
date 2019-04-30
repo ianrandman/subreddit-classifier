@@ -44,6 +44,8 @@ from find_hyperparameters import parse_reddit_data
 
 from parameters import classifier_name_to_params
 
+from io import open
+
 
 class StemmedCountVectorizer(CountVectorizer):
     """
