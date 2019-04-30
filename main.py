@@ -1,23 +1,39 @@
+"""
+
+usage: main.py [-h] [-t] [-d]
+               {MultinomialNB,SVC,RandomForestClassifier,SGDClassifier}
+
+positional arguments:
+  {MultinomialNB,SVC,RandomForestClassifier,SGDClassifier}
+                        The name of the classifier
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -t, --train           Use to train. Otherwise, testing.
+  -d, --use_development_data
+                        Use to specify testing on development data. Otherwise,
+                        testing data will be used
+
+For example:
+
+__author__ = Ian Randman
+__author__ = David Dunlap
+"""
+
 import random
+import sys
+import argparse
 import threading
 import re
 import itertools
 import time
-
-import praw
-from praw.models import MoreComments
 
 import numpy as np
 from joblib import dump, load
 
 from nltk.stem.snowball import SnowballStemmer
 
-from sklearn.model_selection import train_test_split
-from sklearn.datasets import fetch_20newsgroups
-
 from sklearn.pipeline import Pipeline
-from sklearn.model_selection import GridSearchCV
-from sklearn.model_selection import PredefinedSplit
 
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.feature_extraction.text import TfidfTransformer
@@ -27,108 +43,17 @@ from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import SGDClassifier
 
-TRAIN = True
+from find_hyperparameters import parse_reddit_data
 
-CLIENT_ID = 'E9cBapTtE2vUbQ'
-CLIENT_SECRET = 'K4eUnFYNbtD-S32h7EpoaOmGVc8'
-PASSWORD = 'awhMgfH4FBnYD24'
-USERAGENT = 'a subreddit classifier'
-USERNAME = 'cheermeup12'
+from get_data import subreddit_names
+from get_data import sub_to_num
+from get_data import num_to_sub
 
-reddit = praw.Reddit(client_id=CLIENT_ID, client_secret=CLIENT_SECRET,
-                     password=PASSWORD, user_agent=USERAGENT,
-                     username=USERNAME)
+from parameters import classifier_name_to_params
 
-print(reddit.user.me())
+#validation_data, validation_sub_classifications = parse_reddit_data('data/development_data.txt')
 
-subreddit_names = ['nba', 'nhl', 'nfl', 'mlb', 'soccer', 'formula1', 'CFB', 'sports']
-sub_to_num = {'r/nba': 0, 'r/nhl': 1, 'r/nfl': 2, 'r/mlb': 3, 'r/soccer': 4, 'r/formula1': 5, 'r/CFB': 6, 'r/sports': 7}
-num_to_sub = {0: 'r/nba', 1: 'r/nhl', 2: 'r/nfl', 3: 'r/mlb', 4: 'r/soccer', 5: 'r/formula1', 6: 'r/CFB', 7: 'r/sports'}
-
-classifiers = {'MultinomialNB': MultinomialNB(), 'SVC': SVC(), 'RandomForestClassifier': RandomForestClassifier(), 'SGDClassifier': SGDClassifier()}
-
-parameters = {'MultinomialNB':
-                  {'clf__alpha': np.logspace(-5, 0, num=6),
-                   'clf__fit_prior': [True, False],
-                   'tfidf__norm': ['l1', 'l2', None],
-                   'tfidf__use_idf': [True, False],
-                   'tfidf__sublinear_tf': [True, False],
-                   'vect__max_df': [0.50, 0.75, 1.0],
-                   'vect__ngram_range': [(1, 1), (1, 2)]
-                   },
-               'SVC':
-                  {'clf__C': np.logspace(-2, 2, num=5),
-                   'clf__gamma': np.logspace(-2, 2, num=5),
-                   'clf__kernel': ['rbf', 'linear'],
-                   'tfidf__norm': ['l1', 'l2', None],
-                   'tfidf__use_idf': [True, False],
-                   'tfidf__sublinear_tf': [True, False],
-                   'vect__max_df': [0.50, 0.75, 1.0],
-                   'vect__ngram_range': [(1, 1), (1, 2)]
-                   },
-               'RandomForestClassifier':
-                  {'clf__alpha': np.logspace(-5, 0, num=6),
-                   'clf__fit_prior': [True, False],
-                   'tfidf__norm': ['l1', 'l2', None],
-                   'tfidf__use_idf': [True, False],
-                   'tfidf__sublinear_tf': [True, False],
-                   'vect__max_df': [0.50, 0.75, 1.0],
-                   'vect__ngram_range': [(1, 1), (1, 2)]
-                   },
-               'SGDClassifier':
-                  {'clf__alpha': np.logspace(-5, 0, num=6),
-                   'clf__fit_prior': [True, False],
-                   'tfidf__norm': ['l1', 'l2', None],
-                   'tfidf__use_idf': [True, False],
-                   'tfidf__sublinear_tf': [True, False],
-                   'vect__max_df': [0.50, 0.75, 1.0],
-                   'vect__ngram_range': [(1, 1), (1, 2)]
-                   },
-              }
-
-
-# subreddit_names = ['nba', 'nhl', 'nfl']
-# sub_to_num = {'r/nba': 0, 'r/nhl': 1, 'r/nfl': 2}
-# num_to_sub = {0: 'r/nba', 1: 'r/nhl', 2: 'r/nfl'}
-
-
-def file_list(file_name):
-    """
-    This function opens a file and returns it as a list.
-    All new line characters are stripped.
-    All lines that start with '#' are considered comments and are not included.
-
-    :param file_name: the name of the file to be put into a list
-    :return: a list containing each line of the file, except those that start with '#'
-    """
-
-    f_list = []
-    with open(file_name, encoding='utf-8') as f:
-        for line in f:
-            if line[0] != '#' and line[0] != '\n' and len(line[0]) > 0:
-                f_list.append(line.strip('\n'))
-    return f_list
-
-
-def parse_reddit_data(file_name):
-    data = list()
-    sub_classifications = list()
-
-    posts = file_list(file_name)
-    for post in posts:
-        post_split = post.split(',', 1)
-
-        comments = post_split[1]
-        comments = comments.replace(' comment_separator ', ' ')
-
-        comments = re.sub('[^0-9a-zA-Z]+', ' ', comments)
-
-        data.append(comments)
-        sub_classifications.append(sub_to_num[post_split[0]])
-
-    return data, sub_classifications
-
-
+TRAIN = False
 
 class StemmedCountVectorizer(CountVectorizer):
 
@@ -141,105 +66,70 @@ class StemmedCountVectorizer(CountVectorizer):
         return lambda doc: ([self.stemmer.stem(w) for w in analyzer(doc)])
 
 
-def get_params_to_test(grid_params):
-    """
-    Create a complete list of combinations of parameters to test based on possible values for each parameter
-
-    :param grid_params: a map from the parameter name to its possible values
-    :return: a list of dicts, with each dict being a set of parameters to test
-    """
-
-    combinations = list(itertools.product(*grid_params.values()))
-
-    params_to_test = list()
-
-    param_names = list(grid_params.keys())
-    for param_combination in combinations:
-        params = dict()
-
-        for i in range(len(param_combination)):
-            params[param_names[i]] = param_combination[i]
-
-        params_to_test.append(params)
-
-    return (params_to_test)
-
 def split(a, n):
+    """
+    Split a collection into a number of evenly sized chunks.
+
+    :param a: the collection to be split
+    :param n: the number of evenly sized chunks
+    :return: a collection of all the chunks
+    """
+
     k, m = divmod(len(a), n)
     return (a[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(n))
 
-def fit(num_thread, params_to_test):
-    best_pipeline = None
-    best_score = 0
 
-    for parameters in params_to_test:
-        clf_pipeline = Pipeline([
-            ('vect', CountVectorizer(stop_words='english')),
-            ('tfidf', TfidfTransformer()),
-            ('clf', SVC()),
-        ])
+def get_new_pipeline(classifier_name):
+    """
+    Create a new classifying Pipeline with a specified estimator.
 
-        clf_pipeline.set_params(**parameters)
+    :param classifier_name: the name of the estimator to use
+    :return: the constructed Pipeline
+    """
 
-        clf_pipeline.fit(train_data, train_sub_classifications)
-        score = clf_pipeline.score(validation_data, validation_sub_classifications)
-
-        if score > best_score:
-            best_score = score
-            best_pipeline = clf_pipeline
-
-    best_classifier[num_thread] = best_pipeline
-    best_scores[num_thread] = best_score
-
-
-
-def train():
-    train_data, train_sub_classifications = parse_reddit_data('data/training_data.txt')
-    validation_data, validation_sub_classifications = parse_reddit_data('data/development_data.txt')
-
-    print('hi')
+    if classifier_name == 'MultinomialNB':
+        clf = MultinomialNB()
+    elif classifier_name == 'SVC':
+        clf = SVC()
+    elif classifier_name == 'RandomForestClassifier':
+        clf = RandomForestClassifier()
+    else:
+        clf = SGDClassifier()
 
     clf_pipeline = Pipeline([
         ('vect', CountVectorizer(stop_words='english')),
         ('tfidf', TfidfTransformer()),
-        ('clf', MultinomialNB()),
+        ('clf', clf),
     ])
 
-    parameters = {'clf__alpha': 0.001,
-                   'clf__fit_prior': False,
-                   'tfidf__norm': 'l1',
-                   'tfidf__use_idf': False,
-                   'tfidf__sublinear_tf': False,
-                   'vect__max_df': 0.50,
-                   'vect__ngram_range': (1, 1)
-                   }
+    return clf_pipeline
 
+
+def train(classifier_name):
+    train_data, train_sub_classifications = parse_reddit_data('data/training_data.txt')
+
+    clf_pipeline = get_new_pipeline(classifier_name)
+
+    parameters = classifier_name_to_params[classifier_name]
     clf_pipeline.set_params(**parameters)
 
-    #
-    #
-    # print(clf_pipeline.get_params().keys())
-    # print()
-    # print(clf_pipeline.get_params())
-
-    # clf.fit(train_data + validation_data, train_sub_classifications + validation_sub_classifications)
-    # print("Best Score: %s%%" % (round(100*clf.best_estimator_.score(train_data, train_sub_classifications), 2)))
-    # print("Best Score: %s%%" % (round(100 * clf.best_estimator_.score(validation_data, validation_sub_classifications), 2)))
-    #
-    # dump(clf.best_estimator_, 'models/classifier.joblib')
-
     clf_pipeline.fit(train_data, train_sub_classifications)
-    print("Best Score: %s%%" % (round(100 * clf_pipeline.score(validation_data, validation_sub_classifications), 2)))
 
-    dump(clf_pipeline, 'models/old_classifier.joblib')
+    test_data, test_sub_classifications = parse_reddit_data('data/development_data.txt')
+    print("Best Score: %s%%" % (round(100 * clf_pipeline.score(test_data, test_sub_classifications), 2)))
+
+    dump(clf_pipeline, 'models/' + classifier_name + '.joblib')
 
 
-def predict_sub():
-    clf = load('models/classifier.joblib')
+def evaluate(classifier_name, use_development_data):
+    clf_pipeline = load('models/' + classifier_name + '.joblib')
 
-    test_data, test_sub_classifications = parse_reddit_data('data/training_data.txt')
+    if use_development_data:
+        test_data, test_sub_classifications = parse_reddit_data('data/development_data.txt')
+    else:
+        test_data, test_sub_classifications = parse_reddit_data('data/testing_data.txt')
 
-    predicted = clf.predict(test_data)
+    predicted = clf_pipeline.predict(test_data)
 
     for actual_sub, data, predicted_sub in zip(test_sub_classifications, test_data, predicted):
         if actual_sub != predicted_sub:
@@ -253,11 +143,22 @@ def predict_sub():
 
         num_total += 1
 
-    print('%s/%s (%s%%) correct' % (num_correct, num_total, round(100*(np.mean(test_sub_classifications == predicted)), 2)))
+    print('\nClassifier name: ', classifier_name)
+    print('%s/%s (%s%%) correct' % (
+        num_correct, num_total, round(100 * (np.mean(test_sub_classifications == predicted)), 2)))
 
 
 if __name__ == '__main__':
-    if TRAIN:
-        train()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('classifier_name', help='The name of the classifier', choices=['MultinomialNB', 'SVC', 'RandomForestClassifier', 'SGDClassifier'])
+    parser.add_argument('-t', '--train', help='Use to train. Otherwise, testing.', action="store_true")
+    parser.add_argument('-d', '--use_development_data', help='Use to specify testing on development data. Otherwise, testing data will be used', action="store_true")
+    args = parser.parse_args()
+
+    classifier_name = args.classifier_name
+    print(classifier_name)
+
+    if args.train:
+        train(classifier_name)
     else:
-        predict_sub()
+        evaluate(classifier_name, args.use_development_data)

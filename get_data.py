@@ -1,11 +1,16 @@
+"""
+This should be used to retrieve Reddit posts using Reddit's Praw. Then split the data.
+
+__author__ = Ian Randman
+__author__ = David Dunlap
+"""
+
 import random
 import threading
 import numpy as np
 
 import praw
 from praw.models import MoreComments
-
-DOWNLOAD_DATA = False
 
 CLIENT_ID = 'E9cBapTtE2vUbQ'
 CLIENT_SECRET = 'K4eUnFYNbtD-S32h7EpoaOmGVc8'
@@ -20,10 +25,6 @@ reddit = praw.Reddit(client_id=CLIENT_ID, client_secret=CLIENT_SECRET,
 subreddit_names = ['nba', 'nhl', 'nfl', 'mlb', 'soccer', 'formula1', 'CFB', 'sports']
 sub_to_num = {'r/nba': 0, 'r/nhl': 1, 'r/nfl': 2, 'r/mlb': 3, 'r/soccer': 4, 'r/formula1': 5, 'r/CFB': 6, 'r/sports': 7}
 num_to_sub = {0: 'r/nba', 1: 'r/nhl', 2: 'r/nfl', 3: 'r/mlb', 4: 'r/soccer', 5: 'r/formula1', 6: 'r/CFB', 7: 'r/sports'}
-
-# subreddit_names = ['nba', 'nhl', 'nfl']
-# sub_to_num = {'r/nba': 0, 'r/nhl': 1, 'r/nfl': 2}
-# num_to_sub = {0: 'r/nba', 1: 'r/nhl', 2: 'r/nfl'}
 
 
 def file_list(file_name):
@@ -45,6 +46,15 @@ def file_list(file_name):
 
 
 def save_posts(subreddit_name, limit):
+    """
+    From a specified subreddit, retrieve a specified number of posts. Save them to a file in the data folder as [
+    subreddit_name].txt, where each line is in the format (subreddit_name, [concatenation of comments from post]).
+
+    :param subreddit_name: the subreddit to get posts from
+    :param limit: the number of posts to get
+    :return: none
+    """
+
     output = open('data/' + subreddit_name + '.txt', 'a', encoding='utf-8')
     output.write("# this file contains all the data from the " + subreddit_name + " to be tested\n# subreddit_name, title\n\n")
 
@@ -67,6 +77,16 @@ def save_posts(subreddit_name, limit):
 
 
 def split_data():
+    """
+    Split data from all subreddits (read in from that subreddit's data file) into training, development, and testing.
+    The splits for training, development, and testing are 50%, 25%, 25%, respectively.
+
+    Save each of the splits to file, where each line is in the format (subreddit_name, [concatenation of comments
+    from post]).
+
+    :return: none
+    """
+
     training_data_file = open('data/training_data.txt', 'w', encoding='utf-8')
     development_data_file = open('data/development_data.txt', 'w', encoding='utf-8')
     test_data_file = open('data/test_data.txt', 'w', encoding='utf-8')
@@ -98,18 +118,16 @@ def split_data():
 
 
 if __name__ == '__main__':
-    if DOWNLOAD_DATA:
-        threads = list()
+    threads = list()
 
-        for subreddit_name in subreddit_names:
-            limit = 1000
+    for subreddit_name in subreddit_names:
+        limit = 1000
 
-            thread = threading.Thread(target=save_posts, args=(subreddit_name, limit,))
-            thread.start()
-            threads.append(thread)
+        thread = threading.Thread(target=save_posts, args=(subreddit_name, limit,))
+        thread.start()
+        threads.append(thread)
 
-        for thread in threads:
-            thread.join()
+    for thread in threads:
+        thread.join()
 
-    else:
-        split_data()
+    split_data()
