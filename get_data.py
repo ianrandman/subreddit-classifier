@@ -14,6 +14,8 @@ import numpy as np
 import praw
 from praw.models import MoreComments
 
+from io import open
+
 CLIENT_ID = 'E9cBapTtE2vUbQ'
 CLIENT_SECRET = 'K4eUnFYNbtD-S32h7EpoaOmGVc8'
 PASSWORD = 'awhMgfH4FBnYD24'
