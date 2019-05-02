@@ -67,6 +67,7 @@ def parse_reddit_data(file_name):
 
         comments = post_split[1]
 
+        comments = comments.replace(' comment_separator ', ' ')
         comments = re.sub("[^0-9a-zA-Z']+", ' ', comments)
 
         data.append(comments)
