@@ -20,6 +20,7 @@ __author__ = David Dunlap
 """
 
 import argparse
+import math
 import queue
 import random
 import os
@@ -28,6 +29,7 @@ import threading
 import re
 import itertools
 import time
+import warnings
 
 import joblib
 import pickle
@@ -46,30 +48,21 @@ from get_data import sub_to_num
 from get_data import DATA_PATH
 
 from get_data import file_list
-from parameters import params_to_search # these are the parameters to search over
+from parameters import params_to_search  # these are the parameters to search over
 
 from io import open
 import json
 
-NUM_PARAMS_TO_TEST = 500
+warnings.filterwarnings("ignore")
+
+NUM_PARAMS_TO_TEST = 6
 NUM_CORES = multiprocessing.cpu_count()
 
-print('Using %s cores\n' % (NUM_CORES))
+NUM_POSTS_TRAIN_HYPERPARAMETERS = 50  # the number of posts to train and test on when finding best hyperparameters
 
-NUM_POSTS_TRAIN_HYPERPARAMETERS = 500  # the number of posts to train and test on when finding best hyperparameters
-
-BEST_HYPERPARAMETERS_PATH = os.path.dirname(os.path.abspath(__file__)) + '/best_hyperparamters/'
+BEST_HYPERPARAMETERS_PATH = os.path.dirname(os.path.abspath(__file__)) + '/best_hyperparameters/'
 TEMP_PATH = os.path.dirname(os.path.abspath(__file__)) + '/temp/'
 MODELS_PATH = os.path.dirname(os.path.abspath(__file__)) + '/models/'
-
-if not os.path.exists(BEST_HYPERPARAMETERS_PATH):
-    os.makedirs(BEST_HYPERPARAMETERS_PATH)
-
-if not os.path.exists(TEMP_PATH):
-    os.makedirs(TEMP_PATH)
-
-if not os.path.exists(MODELS_PATH):
-    os.makedirs(MODELS_PATH)
 
 
 def parse_reddit_data(file_name):
@@ -195,7 +188,7 @@ def fit_get_hyperparameters(num_process, params_to_test, classifier_name):
         print("Process number: %s -- model trained and tested for %s -- run number %s" %
               (num_process, classifier_name, run_num))
 
-    with open('temp/' + classifier_name + '.temp', "ab") as temp_file:
+    with open(TEMP_PATH + classifier_name + '.temp', "ab") as temp_file:
         pickle.dump((best_score, best_params), temp_file)
 
 
@@ -210,18 +203,19 @@ def train(num_processs, process_params, classifier_name):
     :return: the time it took to find the hyperparameters and train the classifier
     """
 
-    processs = [None] * num_processs
+    processes = [None] * num_processs
 
     for i in range(num_processs):
-        processs[i] = multiprocessing.Process(target=fit_get_hyperparameters, args=(i, process_params[i], classifier_name,))
-        processs[i].start()
+        processes[i] = multiprocessing.Process(target=fit_get_hyperparameters,
+                                              args=(i, process_params[i], classifier_name,))
+        processes[i].start()
 
     for i in range(num_processs):
-        processs[i].join()
+        processes[i].join()
 
     best_score = 0
     best_params = None
-    with open('temp/' + classifier_name + '.temp', "rb") as temp_file:
+    with open(TEMP_PATH + classifier_name + '.temp', "rb") as temp_file:
         try:
             while True:
                 score, parameters = pickle.load(temp_file)
@@ -229,10 +223,10 @@ def train(num_processs, process_params, classifier_name):
                 if score > best_score:
                     best_score = score
                     best_params = parameters
-        except EOFError: # reached end of file
+        except EOFError:  # reached end of file
             pass
 
-    os.remove('temp/' + classifier_name + '.temp')
+    os.remove(TEMP_PATH + classifier_name + '.temp')
 
     clf_pipeline = get_new_pipeline(classifier_name)
     clf_pipeline.set_params(**best_params)
@@ -241,16 +235,15 @@ def train(num_processs, process_params, classifier_name):
     clf_pipeline.fit(full_train_data, full_train_sub_classifications)
     training_time = time.time() - start_training_time
 
-    print("Score for %s: %s%%" %
-          (classifier_name, round(100 * clf_pipeline.score(full_validation_data,
-                                                           full_validation_sub_classifications), 2)))
+    score = round(100 * clf_pipeline.score(full_validation_data,
+                                           full_validation_sub_classifications), 2)
 
     with open(BEST_HYPERPARAMETERS_PATH + '/' + classifier_name + '.json', 'w') as f:
         json.dump(best_params, f, indent=4)
 
     joblib.dump(clf_pipeline, MODELS_PATH + classifier_name + '.joblib')
 
-    return training_time
+    return score, training_time
 
 
 def set_up_training_for_classifier(num_processes, classifier_name):
@@ -262,21 +255,18 @@ def set_up_training_for_classifier(num_processes, classifier_name):
     :return: the time it took to find the hyperparameters and train the classifier
     """
 
-    open('temp/' + classifier_name + '.temp', "w").close()  # clear the temp file
+    open(TEMP_PATH + classifier_name + '.temp', "w").close()  # clear the temp file
 
     params_to_test = get_params_to_test(params_to_search[classifier_name])
     random.shuffle(params_to_test)
 
     params_to_test = params_to_test[:NUM_PARAMS_TO_TEST]  # test on a random selection of 500 parameter combinations
-
     process_params = list(split(params_to_test, num_processes))
 
-    training_time = train(num_processes, process_params, classifier_name)
+    score, training_time = train(num_processes, process_params, classifier_name)
+    training_time_minutes = round(training_time / 60, 2)
 
-    print('Time to find best hyperparameters and train on full training set for %s classifier: %s minutes' %
-          (classifier_name, round(training_time / 60, 2)))
-
-    return training_time
+    return score, training_time_minutes
 
 
 if __name__ == '__main__':
@@ -287,27 +277,42 @@ if __name__ == '__main__':
                                                           'used if none specified.', choices=classifiers)
     args = parser.parse_args()
 
+    print('Using %s cores\n' % NUM_CORES)
+
+    if not os.path.exists(BEST_HYPERPARAMETERS_PATH):
+        os.makedirs(BEST_HYPERPARAMETERS_PATH)
+
+    if not os.path.exists(TEMP_PATH):
+        os.makedirs(TEMP_PATH)
+
+    if not os.path.exists(MODELS_PATH):
+        os.makedirs(MODELS_PATH)
+
     try:
         full_train_data, full_train_sub_classifications = parse_reddit_data(DATA_PATH + '/training_data.txt')
-        full_validation_data, full_validation_sub_classifications = parse_reddit_data(DATA_PATH + '/development_data.txt')
+        full_validation_data, full_validation_sub_classifications = parse_reddit_data(
+            DATA_PATH + '/development_data.txt')
 
         partial_train_data, partial_train_sub_classifications = full_train_data[
                                                                 :NUM_POSTS_TRAIN_HYPERPARAMETERS], full_train_sub_classifications[
                                                                                                    :NUM_POSTS_TRAIN_HYPERPARAMETERS]
         partial_validation_data, partial_validation_sub_classifications = full_validation_data[
-                                                                      :NUM_POSTS_TRAIN_HYPERPARAMETERS], full_validation_sub_classifications[
-                                                                                                         :NUM_POSTS_TRAIN_HYPERPARAMETERS]
+                                                                          :NUM_POSTS_TRAIN_HYPERPARAMETERS], full_validation_sub_classifications[
+                                                                                                             :NUM_POSTS_TRAIN_HYPERPARAMETERS]
 
         classifier_name = args.classifier_name
         if classifier_name is None:
-            print('Using all classifiers: %s\n' % ', '.join(classifiers))
+            print('Using all classifiers: %s' % ', '.join(classifiers))
 
-            num_processes = NUM_CORES / len(classifiers)
+            num_processes = math.ceil(NUM_CORES / len(classifiers))
+            print('Number of processes for training of classifier: %s' % num_processes)
+            print('Number of runs for each process is approximately: %s\n' % (NUM_PARAMS_TO_TEST // num_processes))
+
             que = queue.Queue()
             threads = list()
 
             for classifier in classifiers:
-                if not os.path.exists(BEST_HYPERPARAMETERS_PATH + '/' + classifier + '.json'):
+                if os.path.exists(BEST_HYPERPARAMETERS_PATH + '/' + classifier + '.json'):
                     os.remove(BEST_HYPERPARAMETERS_PATH + '/' + classifier + '.json')
 
                 thread = threading.Thread(target=lambda q, n, c: q.put(
@@ -320,12 +325,22 @@ if __name__ == '__main__':
 
             total_training_time = 0
             while not que.empty():
-                total_training_time += que.get()
+                score, training_time_minutes = que.get()
+                total_training_time += training_time_minutes
+
+                print("Score for %s: %s%%" %
+                      (classifier_name, score))
+
+                print('Time to find best hyperparameters and train on full training set for %s classifier: %s minutes' %
+                      (classifier_name, training_time_minutes))
 
             print('\nTime to find best hyperparameters and train on full training set for all classifiers: %s minutes' %
                   round(total_training_time / 60, 2))
+
         else:
-            print('Using %s classifier\n' % classifier_name)
+            print('Using %s classifier' % classifier_name)
+            print('Number of processes for training of classifier: %s\n' % NUM_CORES)
+
             set_up_training_for_classifier(NUM_CORES, classifier_name)
 
     except FileNotFoundError:
