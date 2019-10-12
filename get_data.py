@@ -141,10 +141,10 @@ if __name__ == '__main__':
         shutil.rmtree(DATA_PATH)
 
     os.makedirs(DATA_PATH)
-    
+
     threads = list()
     limit = 1000
-    print('Downloading', limit, 'posts from each subreddit')
+    print('Downloading', limit, 'posts from each subreddit\n')
 
     for subreddit_name in subreddit_names:
         thread = threading.Thread(target=save_posts, args=(subreddit_name, limit,))
