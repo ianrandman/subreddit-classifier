@@ -303,7 +303,6 @@ if __name__ == '__main__':
         classifier_name = args.classifier_name
         if classifier_name is None:
             print('Using all classifiers: %s' % ', '.join(classifiers))
-
             num_processes = math.ceil(NUM_CORES / len(classifiers))
             print('Number of processes for training of classifier: %s' % num_processes)
             print('Number of runs for each process is approximately: %s\n' % (NUM_PARAMS_TO_TEST // num_processes))
@@ -339,7 +338,8 @@ if __name__ == '__main__':
 
         else:
             print('Using %s classifier' % classifier_name)
-            print('Number of processes for training of classifier: %s\n' % NUM_CORES)
+            print('Number of processes for training of classifier: %s' % NUM_CORES)
+            print('Number of runs for each process is approximately: %s\n' % (NUM_PARAMS_TO_TEST // NUM_CORES))
 
             set_up_training_for_classifier(NUM_CORES, classifier_name)
 
