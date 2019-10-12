@@ -24,6 +24,7 @@ __author__ = David Dunlap
 
 import argparse
 import json
+import os
 import queue
 import threading
 import time
@@ -47,6 +48,7 @@ from find_hyperparameters import parse_reddit_data
 from get_data import DATA_PATH
 
 from find_hyperparameters import BEST_HYPERPARAMETERS_PATH
+from find_hyperparameters import MODELS_PATH
 
 
 class StemmedCountVectorizer(CountVectorizer):
@@ -126,7 +128,7 @@ def train(classifier_name):
 
     print('Time to train for %s: %s minutes' % (classifier_name, round(training_time/60, 2)))
 
-    dump(clf_pipeline, 'models/' + classifier_name + '.joblib')
+    dump(clf_pipeline, MODELS_PATH + classifier_name + '.joblib')
 
     return training_time
 
@@ -140,7 +142,11 @@ def evaluate(classifier_name, use_development_data):
     :return: the time it took to evaluate the classifier
     """
 
-    clf_pipeline = load('models/' + classifier_name + '.joblib')
+    try:
+        clf_pipeline = load(MODELS_PATH + classifier_name + '.joblib')
+    except FileNotFoundError:
+        print('Please make sure %s is trained first' % classifier_name)
+        return 0
 
     if use_development_data:
         test_data, test_sub_classifications = parse_reddit_data(DATA_PATH + '/development_data.txt')
@@ -180,40 +186,44 @@ if __name__ == '__main__':
                                                              '--train is used.', action="store_true")
     args = parser.parse_args()
 
-    classifier_name = args.classifier_name
-    if classifier_name is None:
-        print('Using all classifiers: %s\n' % ', '.join(classifiers))
+    if os.path.exists(DATA_PATH) and os.path.exists(BEST_HYPERPARAMETERS_PATH):
+        classifier_name = args.classifier_name
+        if classifier_name is None:
+            print('Using all classifiers: %s\n' % ', '.join(classifiers))
 
-        que = queue.Queue()
-        threads = list()
+            que = queue.Queue()
+            threads = list()
 
-        for classifier in classifiers:
+            for classifier in classifiers:
+                if args.train:
+                    thread = threading.Thread(target=lambda q, c: q.put(train(c)), args=(que, classifier,))
+                else:
+                    thread = threading.Thread(target=lambda q, c, u: q.put(evaluate(c, u)),
+                                              args=(que, classifier, args.use_development_data))
+
+                threads.append(thread)
+                thread.start()
+
+            for thread in threads:
+                thread.join()
+
+            total_time = 0
+            while not que.empty():
+                total_time += que.get()
+
             if args.train:
-                thread = threading.Thread(target=lambda q, c: q.put(train(c)), args=(que, classifier,))
+                print('\nTime to train for all classifiers: %s minutes' %
+                      round(total_time / 60, 2))
             else:
-                thread = threading.Thread(target=lambda q, c, u: q.put(evaluate(c, u)),
-                                          args=(que, classifier, args.use_development_data))
-
-            threads.append(thread)
-            thread.start()
-
-        for thread in threads:
-            thread.join()
-
-        total_time = 0
-        while not que.empty():
-            total_time += que.get()
-
-        if args.train:
-            print('\nTime to train for all classifiers: %s minutes' %
-                  round(total_time / 60, 2))
+                print('\nTime to evaluate for all classifiers: %s minutes' %
+                      round(total_time / 60, 2))
         else:
-            print('\nTime to evaluate for all classifiers: %s minutes' %
-                  round(total_time / 60, 2))
+            print('Using %s classifier\n' % classifier_name)
+
+            if args.train:
+                train(classifier_name)
+            else:
+                evaluate(classifier_name, args.use_development_data)
+
     else:
-        print('Using %s classifier\n' % classifier_name)
-
-        if args.train:
-            train(classifier_name)
-        else:
-            evaluate(classifier_name, args.use_development_data)
+        print('Please make sure data and best_hyperparameter folders are populated')

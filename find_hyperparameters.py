@@ -59,9 +59,17 @@ print('Using %s cores\n' % (NUM_CORES))
 NUM_POSTS_TRAIN_HYPERPARAMETERS = 500  # the number of posts to train and test on when finding best hyperparameters
 
 BEST_HYPERPARAMETERS_PATH = os.path.dirname(os.path.abspath(__file__)) + '/best_hyperparamters/'
+TEMP_PATH = os.path.dirname(os.path.abspath(__file__)) + '/temp/'
+MODELS_PATH = os.path.dirname(os.path.abspath(__file__)) + '/models/'
 
 if not os.path.exists(BEST_HYPERPARAMETERS_PATH):
     os.makedirs(BEST_HYPERPARAMETERS_PATH)
+
+if not os.path.exists(TEMP_PATH):
+    os.makedirs(TEMP_PATH)
+
+if not os.path.exists(MODELS_PATH):
+    os.makedirs(MODELS_PATH)
 
 
 def parse_reddit_data(file_name):
@@ -240,7 +248,7 @@ def train(num_processs, process_params, classifier_name):
     with open(BEST_HYPERPARAMETERS_PATH + '/' + classifier_name + '.json', 'w') as f:
         json.dump(best_params, f, indent=4)
 
-    joblib.dump(clf_pipeline, 'models/' + classifier_name + '.joblib')
+    joblib.dump(clf_pipeline, MODELS_PATH + classifier_name + '.joblib')
 
     return training_time
 

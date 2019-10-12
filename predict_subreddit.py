@@ -16,7 +16,7 @@ For example: python predict_subreddit.py -clf MultinomialNB
 
 __author__ = Ian Randman
 """
-
+import os
 import random
 import argparse
 
@@ -24,12 +24,12 @@ from joblib import load
 
 from praw.models import MoreComments
 
-from train_and_evaluate import StemmedCountVectorizer
-
 from get_data import subreddit_names
 from get_data import num_to_sub
 
 from get_data import reddit
+
+from find_hyperparameters import MODELS_PATH
 
 
 def predict_random_post(classifier_name):
@@ -59,7 +59,7 @@ def predict_random_post(classifier_name):
 
     print('\nPredicting subreddit...\n')
 
-    clf_pipeline = load('models/' + classifier_name + '.joblib')
+    clf_pipeline = load(MODELS_PATH + classifier_name + '.joblib')
     prediction = num_to_sub[clf_pipeline.predict([data])[0]]
 
     print('Predicted Subreddit', prediction)
@@ -91,7 +91,7 @@ def predict_post(classifier_name, url):
 
     print('\nPredicting subreddit...\n')
 
-    clf_pipeline = load('models/' + classifier_name + '.joblib')
+    clf_pipeline = load(MODELS_PATH + classifier_name + '.joblib')
     prediction = num_to_sub[clf_pipeline.predict([data])[0]]
 
     print('Predicted Subreddit', prediction)
@@ -114,8 +114,12 @@ if __name__ == '__main__':
 
     print('Using %s classifier\n' % classifier_name)
 
-    url = args.url
-    if url is None:
-        predict_random_post(classifier_name)
+    if os.path.exists(MODELS_PATH + classifier_name + '.joblib'):
+        url = args.url
+        if url is None:
+            predict_random_post(classifier_name)
+        else:
+            predict_post(classifier_name, url)
+
     else:
-        predict_post(classifier_name, url)
+        print('Please make sure %s is trained first' % classifier_name)
