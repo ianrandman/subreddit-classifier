@@ -55,10 +55,10 @@ import json
 
 warnings.filterwarnings("ignore")
 
-NUM_PARAMS_TO_TEST = 6
+NUM_PARAMS_TO_TEST = 500
 NUM_CORES = multiprocessing.cpu_count()
 
-NUM_POSTS_TRAIN_HYPERPARAMETERS = 50  # the number of posts to train and test on when finding best hyperparameters
+NUM_POSTS_TRAIN_HYPERPARAMETERS = 500  # the number of posts to train and test on when finding best hyperparameters
 
 BEST_HYPERPARAMETERS_PATH = os.path.dirname(os.path.abspath(__file__)) + '/best_hyperparameters/'
 TEMP_PATH = os.path.dirname(os.path.abspath(__file__)) + '/temp/'
