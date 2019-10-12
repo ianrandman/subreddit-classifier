@@ -200,7 +200,7 @@ def train(num_processs, process_params, classifier_name):
 
     :param num_processs: the number of processes to use for finding hyperparameters
     :param classifier_name: the name of the estimator
-    :return: the time it took to find the hyperparameters and train the classifier
+    :return: the score and the time it took to find the hyperparameters and train the classifier
     """
 
     processes = [None] * num_processs
@@ -252,7 +252,7 @@ def set_up_training_for_classifier(num_processes, classifier_name):
 
     :param num_processes:
     :param classifier_name:
-    :return: the time it took to find the hyperparameters and train the classifier
+    :return: the classifier name, the score, and the time it took to find the hyperparameters and train the classifier
     """
 
     open(TEMP_PATH + classifier_name + '.temp', "w").close()  # clear the temp file
@@ -266,7 +266,7 @@ def set_up_training_for_classifier(num_processes, classifier_name):
     score, training_time = train(num_processes, process_params, classifier_name)
     training_time_minutes = round(training_time / 60, 2)
 
-    return score, training_time_minutes
+    return classifier_name, score, training_time_minutes
 
 
 if __name__ == '__main__':
@@ -324,24 +324,30 @@ if __name__ == '__main__':
 
             total_training_time = 0
             while not que.empty():
-                score, training_time_minutes = que.get()
+                classifier, score, training_time_minutes = que.get()
                 total_training_time += training_time_minutes
 
-                print("Score for %s: %s%%" %
-                      (classifier_name, score))
+                print("\nScore for %s: %s%%" %
+                      (classifier, score))
 
-                print('Time to find best hyperparameters and train on full training set for %s classifier: %s minutes' %
-                      (classifier_name, training_time_minutes))
+                print('Time to find best hyperparameters and train on full training set for %s classifier: %s minutes\n'
+                      % (classifier, training_time_minutes))
 
             print('\nTime to find best hyperparameters and train on full training set for all classifiers: %s minutes' %
-                  round(total_training_time / 60, 2))
+                  total_training_time)
 
         else:
             print('Using %s classifier' % classifier_name)
             print('Number of processes for training of classifier: %s' % NUM_CORES)
             print('Number of runs for each process is approximately: %s\n' % (NUM_PARAMS_TO_TEST // NUM_CORES))
 
-            set_up_training_for_classifier(NUM_CORES, classifier_name)
+            classifier, score, training_time_minutes = set_up_training_for_classifier(NUM_CORES, classifier_name)
+
+            print("\nScore for %s: %s%%" %
+                  (classifier, score))
+
+            print('Time to find best hyperparameters and train on full training set for %s classifier: %s minutes'
+                  % (classifier, training_time_minutes))
 
     except FileNotFoundError:
         print('Please get data first')
