@@ -185,7 +185,7 @@ def fit_get_hyperparameters(num_process, params_to_test, classifier_name):
             best_score = score
             best_params = parameters
 
-        print("Process number: %s -- model trained and tested for %s -- run number %s" %
+        print("Process number: %s -- model trained and tested for %s -- run number: %s" %
               (num_process, classifier_name, run_num))
 
     with open(TEMP_PATH + classifier_name + '.temp', "ab") as temp_file:
