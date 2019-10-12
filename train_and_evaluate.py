@@ -1,15 +1,15 @@
 """
 This program can either train one of four types of models, or it can evaluate a saved model on a specified test set.
 
-usage: train_and_evaluate.py [-h] [-t] [-d]
-                             {MultinomialNB,SVC,RandomForestClassifier,SGDClassifier}
-
-positional arguments:
-  {MultinomialNB,SVC,RandomForestClassifier,SGDClassifier}
-                        The name of the classifier
+usage: train_and_evaluate.py [-h]
+                             [-clf {MultinomialNB,SVC,RandomForestClassifier,SGDClassifier}]
+                             [-t] [-d]
 
 optional arguments:
   -h, --help            show this help message and exit
+  -clf {MultinomialNB,SVC,RandomForestClassifier,SGDClassifier}, --classifier_name {MultinomialNB,SVC,RandomForestClassifier,SGDClassifier}
+                        The name of the classifier. All classifiers will be
+                        used if none specified.
   -t, --train           Use to train. Otherwise, testing.
   -d, --use_development_data
                         Use to specify testing on development data. Otherwise,

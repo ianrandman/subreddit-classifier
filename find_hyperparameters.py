@@ -4,14 +4,13 @@ hyperparameters to test will be trained using a subset of the training data and 
 development data.
 
 usage: find_hyperparameters.py [-h]
-                               {MultinomialNB,SVC,RandomForestClassifier,SGDClassifier}
-
-positional arguments:
-  {MultinomialNB,SVC,RandomForestClassifier,SGDClassifier}
-                        The name of the classifier.
+                               [-clf {MultinomialNB,SVC,RandomForestClassifier,SGDClassifier}]
 
 optional arguments:
   -h, --help            show this help message and exit
+  -clf {MultinomialNB,SVC,RandomForestClassifier,SGDClassifier}, --classifier_name {MultinomialNB,SVC,RandomForestClassifier,SGDClassifier}
+                        The name of the classifier. All classifiers will be
+                        used if none specified.
 
 For example: python find_hyperparameters.py MultinomialNB
 
