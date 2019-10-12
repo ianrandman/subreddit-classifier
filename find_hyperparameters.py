@@ -154,16 +154,20 @@ def get_new_pipeline(classifier_name):
     return clf_pipeline
 
 
-def fit_get_hyperparameters(num_process, params_to_test, classifier_name):
+def fit_get_hyperparameters(data, num_process, params_to_test, classifier_name):
     """
     Find the best set of hyperparameters for a specified classifier. Save the best score on validation data and best
     parameters to a file.
 
+    :param data: a 4-tuple containing the subset of train data and the full validation data
     :param num_process: the process number for the process
     :param params_to_test: the collection of parameters to test on
     :param classifier_name: the name of the estimator
     :return: none
     """
+
+    partial_train_data, partial_train_sub_classifications, partial_validation_data, partial_validation_sub_classifications = data
+
 
     best_params = None
     best_score = 0
@@ -191,25 +195,28 @@ def fit_get_hyperparameters(num_process, params_to_test, classifier_name):
         pickle.dump((best_score, best_params), temp_file)
 
 
-def train(num_processs, process_params, classifier_name):
+def train(data, num_processes, process_params, classifier_name):
     """
     Train to find the best set of hyperparameters for a specified classifier. Use multiprocessing to break up the
     task into a given number of processes to speed up computation. Finally, train on the full training set and save
     the results.
 
-    :param num_processs: the number of processes to use for finding hyperparameters
+    :param data: a 4-tuple containing the subset of train data and the full validation data
+    :param num_processes: the number of processes to use for finding hyperparameters
     :param classifier_name: the name of the estimator
     :return: the score and the time it took to find the hyperparameters and train the classifier
     """
 
-    processes = [None] * num_processs
+    partial_train_data = data[0]
 
-    for i in range(num_processs):
+    processes = [None] * num_processes
+
+    for i in range(num_processes):
         processes[i] = multiprocessing.Process(target=fit_get_hyperparameters,
-                                              args=(i, process_params[i], classifier_name,))
+                                              args=(data, i, process_params[i], classifier_name,))
         processes[i].start()
 
-    for i in range(num_processs):
+    for i in range(num_processes):
         processes[i].join()
 
     best_score = 0
@@ -245,12 +252,12 @@ def train(num_processs, process_params, classifier_name):
     return score, training_time
 
 
-def set_up_training_for_classifier(num_processes, classifier_name):
+def set_up_training_for_classifier(data, num_processes, classifier_name):
     """
     Split up the parameters to test on so that they can be used in a multiprocessing environment
 
-    :param num_processes:
-    :param classifier_name:
+    :param num_processes: the number of processes to use for finding hyperparameters
+    :param classifier_name: the name of the estimator
     :return: the classifier name, the score, and the time it took to find the hyperparameters and train the classifier
     """
 
@@ -262,7 +269,7 @@ def set_up_training_for_classifier(num_processes, classifier_name):
     params_to_test = params_to_test[:NUM_PARAMS_TO_TEST]  # test on a random selection of 500 parameter combinations
     process_params = list(split(params_to_test, num_processes))
 
-    score, training_time = train(num_processes, process_params, classifier_name)
+    score, training_time = train(data, num_processes, process_params, classifier_name)
     training_time_minutes = round(training_time / 60, 2)
 
     return classifier_name, score, training_time_minutes
@@ -299,6 +306,8 @@ if __name__ == '__main__':
                                                                           :NUM_POSTS_TRAIN_HYPERPARAMETERS], full_validation_sub_classifications[
                                                                                                              :NUM_POSTS_TRAIN_HYPERPARAMETERS]
 
+        data = partial_train_data, partial_train_sub_classifications, partial_validation_data, partial_validation_sub_classifications
+
         classifier_name = args.classifier_name
         if classifier_name is None:
             print('Using all classifiers: %s' % ', '.join(classifiers))
@@ -313,8 +322,8 @@ if __name__ == '__main__':
                 if os.path.exists(BEST_HYPERPARAMETERS_PATH + '/' + classifier + '.json'):
                     os.remove(BEST_HYPERPARAMETERS_PATH + '/' + classifier + '.json')
 
-                thread = threading.Thread(target=lambda q, n, c: q.put(
-                    set_up_training_for_classifier(n, c)), args=(que, num_processes, classifier,))
+                thread = threading.Thread(target=lambda q, d, n, c: q.put(
+                    set_up_training_for_classifier(d, n, c)), args=(que, data, num_processes, classifier,))
                 threads.append(thread)
                 thread.start()
 
@@ -340,7 +349,7 @@ if __name__ == '__main__':
             print('Number of processes for training of classifier: %s' % NUM_CORES)
             print('Number of runs for each process is approximately: %s\n' % (NUM_PARAMS_TO_TEST // NUM_CORES))
 
-            classifier, score, training_time_minutes = set_up_training_for_classifier(NUM_CORES, classifier_name)
+            classifier, score, training_time_minutes = set_up_training_for_classifier(data, NUM_CORES, classifier_name)
 
             print("\nScore for %s: %s%%" %
                   (classifier, score))
