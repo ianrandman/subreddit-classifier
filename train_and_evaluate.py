@@ -23,6 +23,9 @@ __author__ = David Dunlap
 """
 
 import argparse
+import json
+import queue
+import threading
 import time
 
 import numpy as np
@@ -41,10 +44,9 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import SGDClassifier
 
 from find_hyperparameters import parse_reddit_data
+from get_data import DATA_PATH
 
-from parameters import classifier_name_to_params
-
-from io import open
+from find_hyperparameters import BEST_HYPERPARAMETERS_PATH
 
 
 class StemmedCountVectorizer(CountVectorizer):
@@ -106,21 +108,27 @@ def train(classifier_name):
     Train a classifier with a specified estimator on the full training set. Save the model to the models folder.
 
     :param classifier_name: the name of the estimator
-    :return: none
+    :return: the time it took to train3ertwtrain_and_evaluate.py:111                                                 the classifier
     """
 
-    train_data, train_sub_classifications = parse_reddit_data(data_path + '/training_data.txt')
+    train_data, train_sub_classifications = parse_reddit_data(DATA_PATH + '/training_data.txt')
 
     clf_pipeline = get_new_pipeline(classifier_name)
 
-    parameters = classifier_name_to_params[classifier_name]
+    with open(BEST_HYPERPARAMETERS_PATH + '/' + classifier_name + '.json') as f:
+        parameters = json.load(f)
+
     clf_pipeline.set_params(**parameters)
 
-    start_time = time.time()
+    start_training_time = time.time()
     clf_pipeline.fit(train_data, train_sub_classifications)
-    print('Time to train: %s minutes' % (round((time.time()-start_time)/60, 2)))
+    training_time = time.time() - start_training_time
+
+    print('Time to train for %s: %s minutes' % (classifier_name, round(training_time/60, 2)))
 
     dump(clf_pipeline, 'models/' + classifier_name + '.joblib')
+
+    return training_time
 
 
 def evaluate(classifier_name, use_development_data):
@@ -129,17 +137,19 @@ def evaluate(classifier_name, use_development_data):
 
     :param classifier_name: the name of the estimator
     :param use_development_data: whether to use development data or training data
-    :return: none
+    :return: the time it took to evaluate the classifier
     """
 
     clf_pipeline = load('models/' + classifier_name + '.joblib')
 
     if use_development_data:
-        test_data, test_sub_classifications = parse_reddit_data(data_path + '/development_data.txt')
+        test_data, test_sub_classifications = parse_reddit_data(DATA_PATH + '/development_data.txt')
     else:
-        test_data, test_sub_classifications = parse_reddit_data(data_path + '/testing_data.txt')
+        test_data, test_sub_classifications = parse_reddit_data(DATA_PATH + '/testing_data.txt')
 
+    start_time = time.time()
     predicted = clf_pipeline.predict(test_data)
+    evaluating_time = time.time() - start_time
 
     num_correct = 0
     num_total = 0
@@ -149,16 +159,20 @@ def evaluate(classifier_name, use_development_data):
 
         num_total += 1
 
-    print('%s/%s (%s%%) correct' % (
-        num_correct, num_total, round(100 * (np.mean(test_sub_classifications == predicted)), 2)))
+    print('Time to evaluate for %s: %s minutes' % (classifier_name, round(evaluating_time/60, 2)))
 
+    print('%s/%s (%s%%) correct for %s' %
+          (num_correct, num_total, round(100 * (np.mean(test_sub_classifications == predicted)), 2), classifier_name))
+
+
+    return evaluating_time
 
 
 if __name__ == '__main__':
     classifiers = ['MultinomialNB', 'SVC', 'RandomForestClassifier', 'SGDClassifier']
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('classifier_name', help='The name of the classifier', choices=classifiers)
+    parser.add_argument('classifier_name', help='The name of the classifier', choices=classifiers, required=False)
     parser.add_argument('-t', '--train', help='Use to train. Otherwise, testing.', action="store_true")
     parser.add_argument('-d', '--use_development_data', help='Use to specify testing on development data. Otherwise, '
                                                              'testing data will be used. Parameter is ignored if '
@@ -166,9 +180,39 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     classifier_name = args.classifier_name
-    print('Using %s classifier\n' % classifier_name)
+    if classifier_name is None:
+        print('Using all classifiers: %s\n' % ', '.join(classifiers))
 
-    if args.train:
-        train(classifier_name)
+        que = queue.Queue()
+        threads = list()
+
+        for classifier in classifiers:
+            if args.train:
+                thread = threading.Thread(target=lambda q, c: q.put(train(c)), args=(que, classifier,))
+            else:
+                thread = threading.Thread(target=lambda q, c, u: q.put(evaluate(c, u)),
+                                          args=(que, classifier, args.use_development_data))
+
+            threads.append(thread)
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+        total_time = 0
+        while not que.empty():
+            total_time += que.get()
+
+        if args.train:
+            print('\nTime to train for all classifiers: %s minutes' %
+                  round(total_time / 60, 2))
+        else:
+            print('\nTime to evaluate for all classifiers: %s minutes' %
+                  round(total_time / 60, 2))
     else:
-        evaluate(classifier_name, args.use_development_data)
+        print('Using %s classifier\n' % classifier_name)
+
+        if args.train:
+            train(classifier_name)
+        else:
+            evaluate(classifier_name, args.use_development_data)

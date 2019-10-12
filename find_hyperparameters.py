@@ -20,10 +20,11 @@ __author__ = David Dunlap
 """
 
 import argparse
+import queue
 import random
-import sys
 import os
 import multiprocessing
+import threading
 import re
 import itertools
 import time
@@ -42,12 +43,23 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import SGDClassifier
 
 from get_data import sub_to_num
-from get_data import data_path
+from get_data import DATA_PATH
 
 from get_data import file_list
 from parameters import params_to_search # these are the parameters to search over
 
 from io import open
+import json
+
+NUM_PARAMS_TO_TEST = 500
+NUM_CORES = multiprocessing.cpu_count()
+
+print('Using %s cores\n' % (NUM_CORES))
+
+BEST_HYPERPARAMETERS_PATH = os.path.dirname(os.path.abspath(__file__)) + '/best_hyperparamters/'
+
+if not os.path.exists(BEST_HYPERPARAMETERS_PATH):
+    os.makedirs(BEST_HYPERPARAMETERS_PATH)
 
 
 def parse_reddit_data(file_name):
@@ -62,7 +74,7 @@ def parse_reddit_data(file_name):
     data = list()
     sub_classifications = list()
 
-    posts = file_list(file_name)
+    posts = file_list(DATA_PATH + file_name)
     for post in posts:
         post_split = post.split(',', 1)
 
@@ -77,8 +89,8 @@ def parse_reddit_data(file_name):
     return data, sub_classifications
 
 
-full_train_data, full_train_sub_classifications = parse_reddit_data(data_path + '/training_data.txt')
-full_validation_data, full_validation_sub_classifications = parse_reddit_data(data_path + '/development_data.txt')
+full_train_data, full_train_sub_classifications = parse_reddit_data(DATA_PATH + '/training_data.txt')
+full_validation_data, full_validation_sub_classifications = parse_reddit_data(DATA_PATH + '/development_data.txt')
 
 num_posts_train_hyperparameters = 500 # the number of posts to train and test on when finding best hyperparameters
 
@@ -149,12 +161,12 @@ def get_new_pipeline(classifier_name):
     return clf_pipeline
 
 
-def fit_get_hyperparameters(num_thread, params_to_test, classifier_name):
+def fit_get_hyperparameters(num_process, params_to_test, classifier_name):
     """
     Find the best set of hyperparameters for a specified classifier. Save the best score on validation data and best
     parameters to a file.
 
-    :param num_thread: the thread number for the process
+    :param num_process: the process number for the process
     :param params_to_test: the collection of parameters to test on
     :param classifier_name: the name of the estimator
     :return: none
@@ -179,30 +191,32 @@ def fit_get_hyperparameters(num_thread, params_to_test, classifier_name):
             best_score = score
             best_params = parameters
 
-        print("Thread number: %s -- model trained and tested -- run number %s" % (num_thread, run_num))
+        print("Process number: %s -- model trained and tested for %s -- run number %s" %
+              (num_process, classifier_name, run_num))
 
     with open('temp/' + classifier_name + '.temp', "ab") as temp_file:
         pickle.dump((best_score, best_params), temp_file)
 
 
-def train(num_threads, thread_params, classifier_name):
+def train(num_processs, process_params, classifier_name):
     """
-    Train to find the best set of hyperparameters for a specified classifier. Use multiprocessing to break up the task
-    into a given number of processes to speed up computation.
+    Train to find the best set of hyperparameters for a specified classifier. Use multiprocessing to break up the
+    task into a given number of processes to speed up computation. Finally, train on the full training set and save
+    the results.
 
-    :param num_threads: the number of processes to use for finding hyperparameters
+    :param num_processs: the number of processes to use for finding hyperparameters
     :param classifier_name: the name of the estimator
-    :return: none
+    :return: the time it took to find the hyperparameters and train the classifier
     """
 
-    threads = [None] * num_threads
+    processs = [None] * num_processs
 
-    for i in range(num_threads):
-        threads[i] = multiprocessing.Process(target=fit_get_hyperparameters, args=(i, thread_params[i], classifier_name,))
-        threads[i].start()
+    for i in range(num_processs):
+        processs[i] = multiprocessing.Process(target=fit_get_hyperparameters, args=(i, process_params[i], classifier_name,))
+        processs[i].start()
 
-    for i in range(num_threads):
-        threads[i].join()
+    for i in range(num_processs):
+        processs[i].join()
 
     best_score = 0
     best_params = None
@@ -219,16 +233,49 @@ def train(num_threads, thread_params, classifier_name):
 
     os.remove('temp/' + classifier_name + '.temp')
 
-
     clf_pipeline = get_new_pipeline(classifier_name)
     clf_pipeline.set_params(**best_params)
 
+    start_training_time = time.time()
     clf_pipeline.fit(full_train_data, full_train_sub_classifications)
+    training_time = time.time() - start_training_time
 
-    print("Score: %s%%" % (round(100 * clf_pipeline.score(full_validation_data, full_validation_sub_classifications), 2)))
-    print(best_params)
+    print("Score for %s: %s%%" %
+          (classifier_name, round(100 * clf_pipeline.score(full_validation_data,
+                                                           full_validation_sub_classifications), 2)))
+
+    with open(BEST_HYPERPARAMETERS_PATH + '/' + classifier_name + '.json', 'w') as f:
+        json.dump(best_params, f, indent=4)
 
     joblib.dump(clf_pipeline, 'models/' + classifier_name + '.joblib')
+
+    return training_time
+
+
+def set_up_training_for_classifier(num_processes, classifier_name):
+    """
+    Split up the parameters to test on so that they can be used in a multiprocessing environment
+
+    :param num_processes:
+    :param classifier_name:
+    :return: the time it took to find the hyperparameters and train the classifier
+    """
+
+    open('temp/' + classifier_name + '.temp', "w").close()  # clear the temp file
+
+    params_to_test = get_params_to_test(params_to_search[classifier_name])
+    random.shuffle(params_to_test)
+
+    params_to_test = params_to_test[:NUM_PARAMS_TO_TEST]  # test on a random selection of 500 parameter combinations
+
+    process_params = list(split(params_to_test, num_processes))
+
+    training_time = train(num_processes, process_params, classifier_name)
+
+    print('Time to find best hyperparameters and train on full training set for %s classifier: %s minutes' %
+          (classifier_name, round(training_time / 60, 2)))
+
+    return training_time
 
 
 if __name__ == '__main__':
@@ -237,26 +284,36 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('classifier_name',
                         help='The name of the classifier.',
-                        choices=classifiers)
+                        choices=classifiers,
+                        required=False)
     args = parser.parse_args()
 
     classifier_name = args.classifier_name
-    print('Using %s classifier\n' % classifier_name)
+    if classifier_name is None:
+        print('Using all classifiers: %s\n' % ', '.join(classifiers))
 
-    open('temp/' + classifier_name + '.temp', "w").close() # clear the temp file
+        num_processes = NUM_CORES / len(classifiers)
+        que = queue.Queue()
+        threads = list()
 
-    params_to_test = get_params_to_test(params_to_search[classifier_name])
-    random.shuffle(params_to_test)
+        for classifier in classifiers:
+            if not os.path.exists(BEST_HYPERPARAMETERS_PATH + '/' + classifier + '.json'):
+                os.remove(BEST_HYPERPARAMETERS_PATH + '/' + classifier + '.json')
 
-    params_to_test = params_to_test[:500] # test on a random selection of 500 parameter combinations
+            thread = threading.Thread(target=lambda q, n, c: q.put(
+                set_up_training_for_classifier(n, c)), args=(que, num_processes, classifier,))
+            threads.append(thread)
+            thread.start()
 
-    num_params_in_thread = 50 # 50 parameter selection in each thread for a total of 10 threads
+        for thread in threads:
+            thread.join()
 
-    thread_params = list(split(params_to_test, int(len(params_to_test) / num_params_in_thread)))
+        total_training_time = 0
+        while not que.empty():
+            total_training_time += que.get()
 
-    num_threads = len(thread_params)
-
-    start_training_time = time.time()
-    train(num_threads, thread_params, classifier_name)
-
-    print('Time to find best hyperparameters and train on full training set: %s seconds' % (time.time() - start_training_time))
+        print('\nTime to find best hyperparameters and train on full training set for all classifiers: %s minutes' %
+              round(total_training_time / 60, 2))
+    else:
+        print('Using %s classifier\n' % classifier_name)
+        set_up_training_for_classifier(NUM_CORES, classifier_name)
