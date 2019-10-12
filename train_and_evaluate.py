@@ -44,11 +44,9 @@ from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import SGDClassifier
 
-from find_hyperparameters import parse_reddit_data
 from get_data import DATA_PATH
 
-from find_hyperparameters import BEST_HYPERPARAMETERS_PATH
-from find_hyperparameters import MODELS_PATH
+from find_hyperparameters import MODELS_PATH, BEST_HYPERPARAMETERS_PATH, parse_reddit_data
 
 
 class StemmedCountVectorizer(CountVectorizer):
