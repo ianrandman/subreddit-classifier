@@ -109,7 +109,7 @@ def train(classifier_name):
     :return: none
     """
 
-    train_data, train_sub_classifications = parse_reddit_data('data/training_data.txt')
+    train_data, train_sub_classifications = parse_reddit_data(data_path + '/training_data.txt')
 
     clf_pipeline = get_new_pipeline(classifier_name)
 
@@ -135,9 +135,9 @@ def evaluate(classifier_name, use_development_data):
     clf_pipeline = load('models/' + classifier_name + '.joblib')
 
     if use_development_data:
-        test_data, test_sub_classifications = parse_reddit_data('data/development_data.txt')
+        test_data, test_sub_classifications = parse_reddit_data(data_path + '/development_data.txt')
     else:
-        test_data, test_sub_classifications = parse_reddit_data('data/testing_data.txt')
+        test_data, test_sub_classifications = parse_reddit_data(data_path + '/testing_data.txt')
 
     predicted = clf_pipeline.predict(test_data)
 

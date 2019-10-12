@@ -42,6 +42,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import SGDClassifier
 
 from get_data import sub_to_num
+from get_data import data_path
 
 from get_data import file_list
 from parameters import params_to_search # these are the parameters to search over
@@ -76,8 +77,8 @@ def parse_reddit_data(file_name):
     return data, sub_classifications
 
 
-full_train_data, full_train_sub_classifications = parse_reddit_data('data/training_data.txt')
-full_validation_data, full_validation_sub_classifications = parse_reddit_data('data/development_data.txt')
+full_train_data, full_train_sub_classifications = parse_reddit_data(data_path + '/training_data.txt')
+full_validation_data, full_validation_sub_classifications = parse_reddit_data(data_path + '/development_data.txt')
 
 num_posts_train_hyperparameters = 500 # the number of posts to train and test on when finding best hyperparameters
 

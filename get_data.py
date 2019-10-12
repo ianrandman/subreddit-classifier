@@ -10,6 +10,8 @@ __author__ = David Dunlap
 import random
 import threading
 import numpy as np
+import os
+import shutil
 
 import praw
 from praw.models import MoreComments
@@ -29,6 +31,13 @@ reddit = praw.Reddit(client_id=CLIENT_ID, client_secret=CLIENT_SECRET,
 subreddit_names = ['nba', 'nhl', 'nfl', 'mlb', 'soccer', 'formula1', 'CFB', 'sports']
 sub_to_num = {'r/nba': 0, 'r/nhl': 1, 'r/nfl': 2, 'r/mlb': 3, 'r/soccer': 4, 'r/formula1': 5, 'r/CFB': 6, 'r/sports': 7}
 num_to_sub = {0: 'r/nba', 1: 'r/nhl', 2: 'r/nfl', 3: 'r/mlb', 4: 'r/soccer', 5: 'r/formula1', 6: 'r/CFB', 7: 'r/sports'}
+
+data_path = os.path.dirname(os.path.abspath(__file__)) + '/data/'
+
+if os.path.exists(data_path):
+    shutil.rmtree(data_path)
+
+os.makedirs(data_path)
 
 
 def file_list(file_name):
@@ -60,25 +69,31 @@ def save_posts(subreddit_name, limit):
     :return: none
     """
 
-    output = open('data/' + subreddit_name + '.txt', 'a', encoding='utf-8')
-    output.write("# this file contains all the data from the " + subreddit_name + " to be tested\n# subreddit_name, title\n\n")
+    data_file_path = data_path + subreddit_name + '.txt'
 
-    post_num = 0
-    for submission in reddit.subreddit(subreddit_name).top(time_filter='all', limit=limit):
-        post_num += 1
-        print(post_num)
+    if os.path.isfile(data_file_path):
+        os.remove(data_file_path)
 
-        data = submission.selftext + ' '
-        for comment in submission.comments.list():
-            if isinstance(comment, MoreComments):
-                continue
+    with open(data_file_path, 'a', encoding='utf-8') as output:
+        output.write("# this file contains all the data from the " + subreddit_name + " to be tested\n# subreddit_name, title\n\n")
 
-            data += comment.body + ' '
+        post_num = 1
+        for submission in reddit.subreddit(subreddit_name).top(time_filter='all', limit=limit):
+            data = submission.selftext + ' '
+            for comment in submission.comments.list():
+                if isinstance(comment, MoreComments):
+                    continue
 
-        data = data.replace('\n', ' ')
-        data = data.replace('\r', ' ')
+                data += comment.body + ' '
 
-        output.write(submission.subreddit_name_prefixed + ',' + data + '\n')
+            data = data.replace('\n', ' ')
+            data = data.replace('\r', ' ')
+
+            output.write(submission.subreddit_name_prefixed + ',' + data + '\n')
+
+            print("Post", post_num, "from", subreddit_name, "downloaded")
+
+            post_num += 1
 
 
 def split_data():
@@ -92,14 +107,14 @@ def split_data():
     :return: none
     """
 
-    training_data_file = open('data/training_data.txt', 'w', encoding='utf-8')
-    development_data_file = open('data/development_data.txt', 'w', encoding='utf-8')
-    test_data_file = open('data/testing_data.txt', 'w', encoding='utf-8')
+    training_data_file = open(data_path + '/training_data.txt', 'w', encoding='utf-8')
+    development_data_file = open(data_path + '/development_data.txt', 'w', encoding='utf-8')
+    test_data_file = open(data_path + '/testing_data.txt', 'w', encoding='utf-8')
 
     training_data, development_data, test_data = list(), list(), list()
 
     for subreddit_name in subreddit_names:
-        data = file_list(subreddit_name + '.txt')
+        data = np.asarray(file_list(subreddit_name + '.txt'))
         random.shuffle(data)
 
         train, dev, test = np.split(data, [int(0.5 * len(data)), int(0.75 * len(data))])
@@ -124,10 +139,10 @@ def split_data():
 
 if __name__ == '__main__':
     threads = list()
+    limit = 1000
+    print('Downloading', limit, 'posts from each subreddit')
 
     for subreddit_name in subreddit_names:
-        limit = 1000
-
         thread = threading.Thread(target=save_posts, args=(subreddit_name, limit,))
         thread.start()
         threads.append(thread)
