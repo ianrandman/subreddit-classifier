@@ -32,12 +32,12 @@ subreddit_names = ['nba', 'nhl', 'nfl', 'mlb', 'soccer', 'formula1', 'CFB', 'spo
 sub_to_num = {'r/nba': 0, 'r/nhl': 1, 'r/nfl': 2, 'r/mlb': 3, 'r/soccer': 4, 'r/formula1': 5, 'r/CFB': 6, 'r/sports': 7}
 num_to_sub = {0: 'r/nba', 1: 'r/nhl', 2: 'r/nfl', 3: 'r/mlb', 4: 'r/soccer', 5: 'r/formula1', 6: 'r/CFB', 7: 'r/sports'}
 
-data_path = os.path.dirname(os.path.abspath(__file__)) + '/data/'
+DATA_PATH = os.path.dirname(os.path.abspath(__file__)) + '/data/'
+#
+if os.path.exists(DATA_PATH):
+    shutil.rmtree(DATA_PATH)
 
-if os.path.exists(data_path):
-    shutil.rmtree(data_path)
-
-os.makedirs(data_path)
+os.makedirs(DATA_PATH)
 
 
 def file_list(file_name):
@@ -69,7 +69,7 @@ def save_posts(subreddit_name, limit):
     :return: none
     """
 
-    data_file_path = data_path + subreddit_name + '.txt'
+    data_file_path = DATA_PATH + subreddit_name + '.txt'
 
     if os.path.isfile(data_file_path):
         os.remove(data_file_path)
@@ -107,14 +107,14 @@ def split_data():
     :return: none
     """
 
-    training_data_file = open(data_path + '/training_data.txt', 'w', encoding='utf-8')
-    development_data_file = open(data_path + '/development_data.txt', 'w', encoding='utf-8')
-    test_data_file = open(data_path + '/testing_data.txt', 'w', encoding='utf-8')
+    training_data_file = open(DATA_PATH + '/training_data.txt', 'w', encoding='utf-8')
+    development_data_file = open(DATA_PATH + '/development_data.txt', 'w', encoding='utf-8')
+    test_data_file = open(DATA_PATH + '/testing_data.txt', 'w', encoding='utf-8')
 
     training_data, development_data, test_data = list(), list(), list()
 
     for subreddit_name in subreddit_names:
-        data = np.asarray(file_list(subreddit_name + '.txt'))
+        data = np.asarray(file_list(DATA_PATH + subreddit_name + '.txt'))
         random.shuffle(data)
 
         train, dev, test = np.split(data, [int(0.5 * len(data)), int(0.75 * len(data))])
@@ -135,6 +135,10 @@ def split_data():
 
     for post in test_data:
         test_data_file.write(post + '\n')
+
+    training_data_file.close()
+    development_data_file.close()
+    test_data_file.close()
 
 
 if __name__ == '__main__':
