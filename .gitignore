@@ -1,2 +1,6 @@
 /data
+/best_hyperparamters
+/temp
+/models
+__pycache__/
 .idea
