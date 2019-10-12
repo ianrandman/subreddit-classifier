@@ -74,7 +74,7 @@ def parse_reddit_data(file_name):
     data = list()
     sub_classifications = list()
 
-    posts = file_list(DATA_PATH + file_name)
+    posts = file_list(file_name)
     for post in posts:
         post_split = post.split(',', 1)
 

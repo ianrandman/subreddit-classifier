@@ -33,11 +33,6 @@ sub_to_num = {'r/nba': 0, 'r/nhl': 1, 'r/nfl': 2, 'r/mlb': 3, 'r/soccer': 4, 'r/
 num_to_sub = {0: 'r/nba', 1: 'r/nhl', 2: 'r/nfl', 3: 'r/mlb', 4: 'r/soccer', 5: 'r/formula1', 6: 'r/CFB', 7: 'r/sports'}
 
 DATA_PATH = os.path.dirname(os.path.abspath(__file__)) + '/data/'
-#
-if os.path.exists(DATA_PATH):
-    shutil.rmtree(DATA_PATH)
-
-os.makedirs(DATA_PATH)
 
 
 def file_list(file_name):
@@ -142,6 +137,11 @@ def split_data():
 
 
 if __name__ == '__main__':
+    if os.path.exists(DATA_PATH):
+        shutil.rmtree(DATA_PATH)
+
+    os.makedirs(DATA_PATH)
+    
     threads = list()
     limit = 1000
     print('Downloading', limit, 'posts from each subreddit')
