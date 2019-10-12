@@ -56,6 +56,8 @@ NUM_CORES = multiprocessing.cpu_count()
 
 print('Using %s cores\n' % (NUM_CORES))
 
+NUM_POSTS_TRAIN_HYPERPARAMETERS = 500  # the number of posts to train and test on when finding best hyperparameters
+
 BEST_HYPERPARAMETERS_PATH = os.path.dirname(os.path.abspath(__file__)) + '/best_hyperparamters/'
 
 if not os.path.exists(BEST_HYPERPARAMETERS_PATH):
@@ -87,15 +89,6 @@ def parse_reddit_data(file_name):
         sub_classifications.append(sub_to_num[post_split[0]])
 
     return data, sub_classifications
-
-
-full_train_data, full_train_sub_classifications = parse_reddit_data(DATA_PATH + '/training_data.txt')
-full_validation_data, full_validation_sub_classifications = parse_reddit_data(DATA_PATH + '/development_data.txt')
-
-num_posts_train_hyperparameters = 500 # the number of posts to train and test on when finding best hyperparameters
-
-partial_train_data, partial_train_sub_classifications = full_train_data[:num_posts_train_hyperparameters], full_train_sub_classifications[:num_posts_train_hyperparameters]
-partial_validation_data, partial_validation_sub_classifications = full_validation_data[:num_posts_train_hyperparameters], full_validation_sub_classifications[:num_posts_train_hyperparameters]
 
 
 def get_params_to_test(grid_params):
@@ -282,38 +275,50 @@ if __name__ == '__main__':
     classifiers = ['MultinomialNB', 'SVC', 'RandomForestClassifier', 'SGDClassifier']
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('classifier_name',
-                        help='The name of the classifier.',
-                        choices=classifiers,
-                        required=False)
+    parser.add_argument('-clf', '--classifier_name', help='The name of the classifier. All classifiers will be '
+                                                          'used if none specified.', choices=classifiers)
     args = parser.parse_args()
 
-    classifier_name = args.classifier_name
-    if classifier_name is None:
-        print('Using all classifiers: %s\n' % ', '.join(classifiers))
+    try:
+        full_train_data, full_train_sub_classifications = parse_reddit_data(DATA_PATH + '/training_data.txt')
+        full_validation_data, full_validation_sub_classifications = parse_reddit_data(DATA_PATH + '/development_data.txt')
 
-        num_processes = NUM_CORES / len(classifiers)
-        que = queue.Queue()
-        threads = list()
+        partial_train_data, partial_train_sub_classifications = full_train_data[
+                                                                :NUM_POSTS_TRAIN_HYPERPARAMETERS], full_train_sub_classifications[
+                                                                                                   :NUM_POSTS_TRAIN_HYPERPARAMETERS]
+        partial_validation_data, partial_validation_sub_classifications = full_validation_data[
+                                                                      :NUM_POSTS_TRAIN_HYPERPARAMETERS], full_validation_sub_classifications[
+                                                                                                         :NUM_POSTS_TRAIN_HYPERPARAMETERS]
 
-        for classifier in classifiers:
-            if not os.path.exists(BEST_HYPERPARAMETERS_PATH + '/' + classifier + '.json'):
-                os.remove(BEST_HYPERPARAMETERS_PATH + '/' + classifier + '.json')
+        classifier_name = args.classifier_name
+        if classifier_name is None:
+            print('Using all classifiers: %s\n' % ', '.join(classifiers))
 
-            thread = threading.Thread(target=lambda q, n, c: q.put(
-                set_up_training_for_classifier(n, c)), args=(que, num_processes, classifier,))
-            threads.append(thread)
-            thread.start()
+            num_processes = NUM_CORES / len(classifiers)
+            que = queue.Queue()
+            threads = list()
 
-        for thread in threads:
-            thread.join()
+            for classifier in classifiers:
+                if not os.path.exists(BEST_HYPERPARAMETERS_PATH + '/' + classifier + '.json'):
+                    os.remove(BEST_HYPERPARAMETERS_PATH + '/' + classifier + '.json')
 
-        total_training_time = 0
-        while not que.empty():
-            total_training_time += que.get()
+                thread = threading.Thread(target=lambda q, n, c: q.put(
+                    set_up_training_for_classifier(n, c)), args=(que, num_processes, classifier,))
+                threads.append(thread)
+                thread.start()
 
-        print('\nTime to find best hyperparameters and train on full training set for all classifiers: %s minutes' %
-              round(total_training_time / 60, 2))
-    else:
-        print('Using %s classifier\n' % classifier_name)
-        set_up_training_for_classifier(NUM_CORES, classifier_name)
+            for thread in threads:
+                thread.join()
+
+            total_training_time = 0
+            while not que.empty():
+                total_training_time += que.get()
+
+            print('\nTime to find best hyperparameters and train on full training set for all classifiers: %s minutes' %
+                  round(total_training_time / 60, 2))
+        else:
+            print('Using %s classifier\n' % classifier_name)
+            set_up_training_for_classifier(NUM_CORES, classifier_name)
+
+    except FileNotFoundError:
+        print('Please get data first')

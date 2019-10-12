@@ -172,7 +172,8 @@ if __name__ == '__main__':
     classifiers = ['MultinomialNB', 'SVC', 'RandomForestClassifier', 'SGDClassifier']
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('classifier_name', help='The name of the classifier', choices=classifiers, required=False)
+    parser.add_argument('-clf', '--classifier_name', help='The name of the classifier. All classifiers will be '
+                                                          'used if none specified.', choices=classifiers)
     parser.add_argument('-t', '--train', help='Use to train. Otherwise, testing.', action="store_true")
     parser.add_argument('-d', '--use_development_data', help='Use to specify testing on development data. Otherwise, '
                                                              'testing data will be used. Parameter is ignored if '
