@@ -155,3 +155,5 @@ if __name__ == '__main__':
         thread.join()
 
     split_data()
+
+    print('\nDownload finished')
