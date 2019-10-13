@@ -24,6 +24,7 @@ __author__ = David Dunlap
 
 import argparse
 import json
+import multiprocessing
 import os
 import queue
 import threading
@@ -165,9 +166,8 @@ def evaluate(classifier_name, use_development_data):
 
     print('Time to evaluate for %s: %s minutes' % (classifier_name, round(evaluating_time/60, 2)))
 
-    print('%s/%s (%s%%) correct for %s' %
+    print('%s/%s (%s%%) correct for %s\n' %
           (num_correct, num_total, round(100 * (np.mean(test_sub_classifications == predicted)), 2), classifier_name))
-
 
     return evaluating_time
 
@@ -194,9 +194,9 @@ if __name__ == '__main__':
 
             for classifier in classifiers:
                 if args.train:
-                    thread = threading.Thread(target=lambda q, c: q.put(train(c)), args=(que, classifier,))
+                    thread = multiprocessing.Process(target=lambda q, c: q.put(train(c)), args=(que, classifier,))
                 else:
-                    thread = threading.Thread(target=lambda q, c, u: q.put(evaluate(c, u)),
+                    thread = multiprocessing.Process(target=lambda q, c, u: q.put(evaluate(c, u)),
                                               args=(que, classifier, args.use_development_data))
 
                 threads.append(thread)
