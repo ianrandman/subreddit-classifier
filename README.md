@@ -1,6 +1,6 @@
 # Subreddit Classifier
 
-##Setup
+## Setup
 
 To run, you must install the following dependencies:
 ```
@@ -18,7 +18,7 @@ In order to use predict_subreddit.py or train_and_evaluate.py, the "models" fold
 
 In order to use find_hyperparameters.py, a "temp" folder must be made.
 
-##Usage
+## Usage
 
 In order to simply test a classifier on a random reddit post, run:
 ```
